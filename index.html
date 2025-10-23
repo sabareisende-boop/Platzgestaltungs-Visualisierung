@@ -189,7 +189,7 @@
         const closeFullscreenBtnEl = document.getElementById('closeFullscreenBtn');
         const fullscreenPromptTextEl = document.getElementById('fullscreenPromptText');
         const fullscreenTextOverlayEl = document.getElementById('fullscreenTextOverlay');
-        const fullscreenImageNoteEl = document.getElementById('fullscreenImageNote'); // NEU
+        const fullscreenImageNoteEl = document.getElementById('fullscreenImageNote');
 
         // Funktion zur Anzeige von Fehlern (ersetzt alert())
         function showModalError(message) {
@@ -237,28 +237,61 @@
         }
 
 
-        // Hilfsfunktion: Konvertiert ein externes Bild in Base64
+        // Hilfsfunktion: Konvertiert ein externes Bild in Base64 (JETZT MIT CORS-PROXY-FALLBACK)
         async function imageToBase64(url) {
-            try {
-                // Fügen Sie hier eine Überprüfung des Link-Formats hinzu
-                if (!url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                    throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link, der auf .jpg, .png etc. endet (keine Imgur-Albumseite).");
-                }
+            let attemptUrl = url;
+            let response;
+            let mimeType;
+            // Der Proxy, der die CORS-Blockade umgeht
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            let isProxied = false;
 
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP-Fehler! Status: ${response.status}. Stelle sicher, dass der Link öffentlich und direkt auf die Bilddatei ist.`);
+            try {
+                // 1. VERSUCH: Direkter Download
+                try {
+                    if (!url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                         throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link.");
+                    }
+                    response = await fetch(attemptUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP-Fehler ${response.status} beim direkten Versuch.`);
+                    }
+                    // Clone der Antwort, da blob() den Stream verbraucht
+                    const blob = await response.clone().blob();
+                    mimeType = blob.type;
+                    if (!mimeType || mimeType === 'text/html') throw new Error("Kein gültiger MIME-Typ erhalten.");
+
+                } catch (directError) {
+                    // Wenn der direkte Versuch fehlschlägt, versuchen wir es mit dem Proxy
+                    console.warn(`Direkter Ladeversuch fehlgeschlagen, versuche Proxy... Fehler: ${directError.message}`);
+                    isProxied = true;
+                    attemptUrl = proxyUrl;
+                    
+                    // 2. VERSUCH: Über CORS-Proxy
+                    response = await fetch(attemptUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP-Fehler ${response.status} beim Proxy-Versuch.`);
+                    }
+                    const blob = await response.clone().blob();
+                    mimeType = blob.type;
+                    if (!mimeType || mimeType === 'text/html') throw new Error("Kein gültiger MIME-Typ erhalten (Proxy).");
                 }
-                const blob = await response.blob();
+                
+                // Konvertierung in Base64
+                const blobFinal = await response.blob(); 
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result.split(',')[1]); // Nur Base64-Daten
+                    reader.onloadend = () => resolve({
+                        base64Data: reader.result.split(',')[1],
+                        mimeType: mimeType
+                    }); 
                     reader.onerror = reject;
-                    reader.readAsDataURL(blob);
+                    reader.readAsDataURL(blobFinal);
                 });
+
             } catch (error) {
-                console.error("Fehler beim Laden oder Konvertieren des Bildes:", error);
-                throw new Error("Konnte Basisbild nicht laden oder konvertieren: " + error.message + " (Möglicherweise CORS-Problem oder falscher Link-Typ).");
+                console.error("Endgültiger Fehler beim Laden oder Konvertieren des Bildes:", error);
+                throw new Error(`Konnte Basisbild nicht laden oder konvertieren, auch nicht über Proxy: ${error.message}. Stellen Sie sicher, dass der Link gültig ist.`);
             }
         }
 
@@ -280,7 +313,8 @@
                 resetView();
                 // Zeigt das Bild direkt an (Browser versucht, es zu laden)
                 displayImageEl.src = baseImageUrl; 
-                showModalError(`Basisbild auf neuen Link gesetzt. Bitte überprüfen Sie, ob das Bild links im Feld erscheint. Wenn nicht: Es ist kein direkter Link!`);
+                // Kurze Meldung, dass der Link gesetzt wurde.
+                showModalError(`Basisbild auf neuen Link gesetzt. Bitte überprüfen Sie, ob das Bild links im Feld erscheint. Nun können Sie eine Idee generieren.`);
             } else {
                 showModalError("Bitte geben Sie eine gültige URL ein.");
             }
@@ -326,8 +360,8 @@
             let currentRetry = 0;
 
             try {
-                // Wichtiger Schritt: Bild in Base64 konvertieren
-                const base64Image = await imageToBase64(baseImageUrl);
+                // Wichtiger Schritt: Bild in Base64 konvertieren (mit Proxy-Fallback)
+                const { base64Data, mimeType } = await imageToBase64(baseImageUrl); 
                 const fullPrompt = `Platziere das folgende Objekt in der Mitte des bereitgestellten Platz-Fotos. Füge es realistisch ein und achte auf Schatten und Beleuchtung: ${prompt}`;
                 
                 const payload = {
@@ -338,8 +372,8 @@
                                 { text: fullPrompt },
                                 {
                                     inlineData: {
-                                        mimeType: "image/jpeg", 
-                                        data: base64Image
+                                        mimeType: mimeType || "image/jpeg", // <-- Verwenden des korrekten MIME-Typs
+                                        data: base64Data
                                     }
                                 }
                             ]
@@ -359,6 +393,7 @@
                         });
 
                         if (!fetchResponse.ok) {
+                            // Wenn 403 oder ein anderer API-Fehler auftritt, wird er hier geworfen
                             throw new Error(`API HTTP Error: ${fetchResponse.status}`);
                         }
 
@@ -381,10 +416,10 @@
                     throw new Error("Die KI-Generierung war nach mehreren Versuchen nicht erfolgreich.");
                 }
 
-                const base64Data = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                const base64DataResult = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
 
-                if (base64Data) {
-                    generatedImageDataUrl = `data:image/png;base64,${base64Data}`;
+                if (base64DataResult) {
+                    generatedImageDataUrl = `data:image/png;base64,${base64DataResult}`;
                     displayImageEl.src = generatedImageDataUrl;
                     saveBtnEl.disabled = false;
                     fullscreenBtnEl.disabled = false;
@@ -394,7 +429,8 @@
 
             } catch (error) {
                 console.error("Generierungsfehler:", error);
-                showModalError(`Generierungsfehler: ${error.message}. Stellen Sie sicher, dass Sie den DIREKTEN Bild-Link (.jpg, .png etc.) verwenden und das Bild CORS-konform geladen werden kann.`);
+                // Die Fehlermeldung wurde präziser gemacht, um den HTTP-Code anzuzeigen
+                showModalError(`Generierungsfehler: ${error.message}. Dies kann auf ein internes Problem, eine fehlerhafte API-Nutzung oder ein Problem mit dem Basisbild hinweisen.`);
             } finally {
                 loadingOverlayEl.classList.add('hidden');
                 generateBtnEl.disabled = false;
