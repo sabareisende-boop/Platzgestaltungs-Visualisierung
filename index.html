@@ -53,6 +53,24 @@
             align-items: center;
             justify-content: center;
         }
+        /* Styling für den Datei-Input, der jetzt direkt sichtbar ist */
+        #fileInput {
+            cursor: pointer;
+            color: transparent; /* Text unsichtbar machen */
+        }
+        #fileInput::file-selector-button {
+            background-color: #f97316; /* Orange */
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            margin-right: 1rem;
+            transition: background-color 0.15s;
+            cursor: pointer;
+        }
+        #fileInput:hover::file-selector-button {
+            background-color: #ea580c; /* Dunkleres Orange */
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -72,16 +90,15 @@
                 App wird initialisiert... Bitte warten.
             </div>
 
+            <!-- NEU: STABILE UPLOAD-LÖSUNG (KEIN anfälliger Button mehr) -->
             <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
                 <h3 class="text-lg font-semibold mb-2 text-orange-700">A: Bild hochladen (STABILE LÖSUNG: Funktioniert garantiert auf GitHub Pages)</h3>
-                <!-- Das Input-Feld ist nun standardmäßig ausgeblendet, da der Button die Funktion übernimmt -->
-                <input type="file" id="fileInput" accept="image/jpeg, image/png" class="hidden" disabled>
+                <!-- Das Input-Feld ist jetzt sichtbar und löst die Funktion per 'change' aus -->
+                <input type="file" id="fileInput" accept="image/jpeg, image/png" 
+                       class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg bg-white focus:outline-none" 
+                       disabled>
                 
-                <!-- Der Button öffnet nun den Dialog und setzt das Bild, wenn eine Datei ausgewählt wurde -->
-                <button id="selectFileBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
-                    Bilddatei auswählen & als Basis setzen
-                </button>
-                <p id="fileStatus" class="mt-2 text-sm text-gray-600">Keine Datei ausgewählt.</p>
+                <p id="fileStatus" class="mt-2 text-sm text-gray-600">Wählen Sie oben eine Datei aus, um sie als Basisbild zu setzen.</p>
             </div>
 
             <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (EXTREM INSTABIL: Nicht empfohlen auf GitHub)</h3>
@@ -201,9 +218,7 @@
         const imageUrlInputEl = document.getElementById('imageUrlInput');
         const setBaseImageBtnEl = document.getElementById('setBaseImageBtn');
         const fileInputEl = document.getElementById('fileInput'); 
-        // WICHTIG: selectFileBtnEl ist der Button, der geklickt wird
-        const selectFileBtnEl = document.getElementById('selectFileBtn'); 
-        const fileStatusEl = document.getElementById('fileStatus'); // NEU: Statusanzeige für die Datei
+        const fileStatusEl = document.getElementById('fileStatus'); // Statusanzeige für die Datei
         const promptInputEl = document.getElementById('promptInput');
         const generateBtnEl = document.getElementById('generateBtn');
         const saveBtnEl = document.getElementById('saveBtn');
@@ -261,19 +276,18 @@
         }
 
         /**
-         * NEUE LÖSUNG: Liest die Datei direkt aus dem Input-Feld in Base64 ein (keine Netzwerk-Abhängigkeit).
-         * Wird für Option A verwendet, um den 403-Fehler zu umgehen.
+         * LÖSUNG: Liest die Datei direkt aus dem Input-Feld in Base64 ein (keine Netzwerk-Abhängigkeit).
          */
         function fileToDataURL() {
+            // Wird durch 'change' Event des fileInput ausgelöst
             const file = fileInputEl.files[0];
             
-            // Wenn keine Datei ausgewählt ist, öffnen wir den Dialog, um die Auswahl zu ermöglichen
             if (!file) {
-                 fileInputEl.click();
+                 fileStatusEl.textContent = "Keine Datei ausgewählt.";
                  return; 
             }
 
-            selectFileBtnEl.disabled = true;
+            fileInputEl.disabled = true; // Button (Input) temporär sperren
             loadingOverlayEl.classList.remove('hidden');
             displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=LÄDT+BILDDATEN...'; 
             fileStatusEl.textContent = `Lade ${file.name} in den Browser-Speicher...`;
@@ -286,21 +300,20 @@
                 displayImageEl.src = baseImageUrl;
                 fileStatusEl.textContent = `Basisbild gesetzt: ${file.name}.`;
                 showModalError("Bild erfolgreich geladen (Base64). Sie können jetzt generieren!");
-                selectFileBtnEl.disabled = false;
+                fileInputEl.disabled = false; // Button wieder freigeben
                 loadingOverlayEl.classList.add('hidden');
             };
             reader.onerror = () => {
                 showModalError("Fehler beim Lesen der Datei.");
                 fileStatusEl.textContent = "Fehler beim Laden der Datei.";
-                selectFileBtnEl.disabled = false;
+                fileInputEl.disabled = false;
                 loadingOverlayEl.classList.add('hidden');
             };
             reader.readAsDataURL(file);
         }
 
         /**
-         * Angepasste Hilfsfunktion: Kann jetzt entweder einen Link abrufen (mit Proxy-Fallback, für Option B)
-         * ODER die Base64-Daten direkt extrahieren, wenn die baseImageUrl bereits eine Data URL ist (für Option A).
+         * Hilfsfunktion: Kann Base64-Daten (Option A) oder externen Link (Option B) verarbeiten.
          */
         async function imageToBase64(url) {
             // PRÜFUNG 1: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
@@ -392,8 +405,8 @@
             generateBtnEl.disabled = !isReady;
             
             // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
-            // Wenn App Ready ist, wird der Select Button aktiviert.
-            selectFileBtnEl.disabled = !isReady; 
+            // Wenn App Ready ist, wird der File Input aktiviert.
+            fileInputEl.disabled = !isReady; 
 
             if (!isFullFirebaseActive) {
                 // Speichern ist ohne Firestore auf GitHub Pages sinnlos
@@ -405,17 +418,8 @@
 
         // --- Event Listener ---
 
-        // NEU: Selektions-Button (Orange)
-        selectFileBtnEl.addEventListener('click', fileToDataURL);
-
-        // NEU: Listener für Datei-Änderung (wenn der Benutzer die Datei über das Browsermenü ausgewählt hat)
-        fileInputEl.addEventListener('change', () => {
-             // Wenn eine Datei ausgewählt wurde, aber der Button noch nicht geklickt wurde, setzen wir das Bild sofort.
-            if (fileInputEl.files.length > 0) {
-                fileToDataURL();
-            }
-        });
-
+        // WICHTIG: Die gesamte Logik der Option A wird nun durch das 'change' Event des fileInput ausgelöst.
+        fileInputEl.addEventListener('change', fileToDataURL); 
 
         setBaseImageBtnEl.addEventListener('click', () => {
             const newUrl = imageUrlInputEl.value;
