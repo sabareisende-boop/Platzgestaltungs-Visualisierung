@@ -268,7 +268,6 @@
             let currentAttemptUrl = url;
 
             // Liste der Abrufversuche (URL oder Proxy-URL)
-            // Firebase Storage URLs benötigen keinen Proxy und sollten beim ersten Versuch erfolgreich sein.
             const attempts = [
                 { url: url, name: 'Direkter Versuch (bevorzugt Storage/CORS-konform)' },
                 { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, name: 'Proxy 1 (corsproxy.io)' },
@@ -382,40 +381,34 @@
             generatedImageDataUrl = null;
             saveBtnEl.disabled = true;
             fullscreenBtnEl.disabled = true; 
-            // generateBtnEl.disabled = false; // Wird jetzt von setAppReady gesteuert
+            // generateBtnEl.disabled = false; // Wird jetzt von setReadyState gesteuert
         }
         
         // NEU: Funktion zum Setzen des Bereitschaftsstatus
-        function setAppReady(isReady, message = "App ist bereit für Eingaben.") {
-            if (isReady) {
-                statusIndicatorEl.textContent = message;
-                statusIndicatorEl.classList.remove('bg-gray-200', 'bg-red-100', 'text-red-800');
-                statusIndicatorEl.classList.add('bg-green-100', 'text-green-800');
+        function setReadyState(isReady, message, isFullFirebase) {
+            statusIndicatorEl.textContent = message;
+            statusIndicatorEl.classList.remove('bg-gray-200', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+            statusIndicatorEl.classList.add(isReady ? 'bg-green-100' : 'bg-red-100', isReady ? 'text-green-800' : 'text-red-800');
 
-                // Enable all input/action buttons
-                fileInputEl.disabled = false;
-                uploadFileBtnEl.disabled = false;
-                imageUrlInputEl.disabled = false;
-                setBaseImageBtnEl.disabled = false;
-                promptInputEl.disabled = false;
-                generateBtnEl.disabled = false;
-                
-                // Initiales Laden des Basisbildes in die Ansicht (falls ein Standard-Link existiert)
-                resetView();
+            // Kernfunktionen (Generierung) aktivieren/deaktivieren
+            imageUrlInputEl.disabled = !isReady;
+            setBaseImageBtnEl.disabled = !isReady;
+            promptInputEl.disabled = !isReady;
+            generateBtnEl.disabled = !isReady;
 
+            // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
+            if (isFullFirebase) {
+                fileInputEl.disabled = !isReady;
+                uploadFileBtnEl.disabled = !isReady;
             } else {
-                statusIndicatorEl.textContent = message;
-                statusIndicatorEl.classList.remove('bg-gray-200', 'bg-green-100', 'text-green-800');
-                statusIndicatorEl.classList.add('bg-red-100', 'text-red-800');
-                
-                // Disable all input/action buttons
+                // Dauerhaft deaktivieren, wenn keine Firebase-Konfig verfügbar ist (z.B. GitHub Pages)
                 fileInputEl.disabled = true;
                 uploadFileBtnEl.disabled = true;
-                imageUrlInputEl.disabled = true;
-                setBaseImageBtnEl.disabled = true;
-                promptInputEl.disabled = true;
-                generateBtnEl.disabled = true;
+                saveBtnEl.disabled = true; // Speichern ist ohne Firestore sinnlos
             }
+            
+            // Initiales Laden des Basisbildes in die Ansicht
+            if(isReady) resetView();
         }
 
         // --- Event Listener ---
@@ -428,7 +421,7 @@
                 // Zeigt das Bild direkt an (Browser versucht, es zu laden)
                 displayImageEl.src = baseImageUrl; 
                 // Kurze Meldung, dass der Link gesetzt wurde.
-                showModalError(`Basisbild auf neuen Link gesetzt. Bitte überprüfen Sie, ob das Bild links im Feld erscheint. Nun können Sie eine Idee generieren. Beachten Sie, dass externe Links möglicherweise immer noch CORS-Probleme (403-Fehler) verursachen können.`);
+                showModalError(`Basisbild auf neuen Link gesetzt. Nun können Sie eine Idee generieren. Beachten Sie, dass externe Links möglicherweise immer noch CORS-Probleme (403-Fehler) verursachen können.`);
             } else {
                 showModalError("Bitte geben Sie eine gültige URL ein.");
             }
@@ -538,6 +531,8 @@
                 if (base64DataResult) {
                     generatedImageDataUrl = `data:image/png;base64,${base64DataResult}`;
                     displayImageEl.src = generatedImageDataUrl;
+                    
+                    // Speichern/Vollbild nur aktivieren, wenn das Bild generiert wurde
                     saveBtnEl.disabled = false;
                     fullscreenBtnEl.disabled = false;
                 } else {
@@ -547,7 +542,7 @@
             } catch (error) {
                 console.error("Generierungsfehler:", error);
                 // Die Fehlermeldung wurde präziser gemacht, um den HTTP-Code anzuzeigen
-                showModalError(`Generierungsfehler: ${error.message}. Dies kann auf ein internes Problem, eine fehlerhafte API-Nutzung oder ein Problem mit dem Basisbild hinweisen.`);
+                showModalError(`Generierungsfehler: ${error.message}. Stellen Sie sicher, dass der Basisbild-Link (Feld B) korrekt ist und der Imgur-Server derzeit nicht blockiert.`);
             } finally {
                 loadingOverlayEl.classList.add('hidden');
                 generateBtnEl.disabled = false;
@@ -557,24 +552,24 @@
         // --- Firestore-Funktionen ---
 
         async function initFirebase() {
-            // Setzt den Initialisierungsstatus
-            setAppReady(false, "App wird initialisiert...");
+            setReadyState(false, "App wird initialisiert...", false);
 
+            if (Object.keys(firebaseConfig).length === 0) {
+                 setLogLevel('silent');
+                 console.warn("Firebase Config fehlt. Speicherung und Upload sind deaktiviert.");
+                 // Nur Generierungsfunktionen aktivieren, da Firebase fehlt.
+                 setReadyState(true, "Basis-Generierung (Link-Eingabe) bereit. Speicherung/Upload deaktiviert.", false);
+                 return;
+            }
+            
+            // Firebase Config gefunden: Versuche vollständige Initialisierung
             try {
-                if (Object.keys(firebaseConfig).length === 0) {
-                     setLogLevel('silent'); // Firestore-Logging unterdrücken, wenn keine Konfig vorhanden
-                     console.error("Firebase Config fehlt. Lokaler Speicher wird nur für UI verwendet.");
-                     setAppReady(false, "ACHTUNG: Firebase-Speicherung ist deaktiviert.");
-                     return;
-                }
-                
-                setLogLevel('debug'); // Firestore-Logging aktivieren
+                setLogLevel('debug');
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                storage = getStorage(app); // NEU: Storage initialisieren
+                storage = getStorage(app); 
 
-                // Authentifizierung
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -584,19 +579,17 @@
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
-                        console.log("Benutzer erfolgreich angemeldet:", userId);
-                        setAppReady(true); // App ist bereit
+                        setReadyState(true, "App ist VOLLSTÄNDIG bereit (Upload, Speicherung & Generierung aktiv).", true);
                         setupGalleryListener();
                     } else {
-                        console.warn("Benutzer nicht angemeldet. Firebase-Speicherung deaktiviert.");
-                        setAppReady(false, "Fehler: Speicherdienst nicht verfügbar.");
+                        setReadyState(false, "Fehler: Speicherdienst nicht verfügbar (Anmeldung fehlgeschlagen).", false);
                     }
                 });
 
             } catch (error) {
                 console.error("Fehler bei der Firebase-Initialisierung:", error);
                 showModalError("Fehler beim Laden des Speicherdienstes (Firestore).");
-                setAppReady(false, "Fehler: Speicherdienst konnte nicht initialisiert werden.");
+                setReadyState(false, "Fehler: Speicherdienst konnte nicht initialisiert werden.", false);
             }
         }
 
