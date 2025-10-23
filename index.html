@@ -59,20 +59,30 @@
 
     <div id="app" class="max-w-7xl mx-auto p-4 lg:p-8">
         <header class="text-center mb-10">
-            <h1 class="4xl font-extrabold text-indigo-700">Ideen-Generator für Ihren Platz</h1>
-            <p class="mt-2 text-gray-600">Laden Sie ein Foto hoch und verwenden Sie KI, um neue Objekte darauf zu platzieren (Image-to-Image-Generierung).</p>
+            <h1 class="text-4xl font-extrabold text-indigo-700">Ideen-Generator für Ihren Platz</h1>
+            <p class="mt-2 text-gray-600">Laden Sie ein Foto hoch oder geben Sie einen CORS-konformen Link ein, um neue Objekte darauf zu platzieren (Image-to-Image-Generierung).</p>
         </header>
 
         <!-- Haupteingabebereich -->
         <div class="bg-white shadow-xl rounded-xl p-6 mb-8">
             <h2 class="text-2xl font-semibold mb-4 text-gray-800">1. Basisbild definieren (Originalplatz)</h2>
+            
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                <h3 class="text-lg font-semibold mb-2 text-orange-700">A: Bild hochladen (Empfohlen: Behebt 403/CORS-Fehler dauerhaft)</h3>
+                <input type="file" id="fileInput" accept="image/jpeg, image/png" class="mb-2 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none">
+                <button id="uploadFileBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md disabled:opacity-50">
+                    Bild hochladen & als Basis setzen
+                </button>
+            </div>
+
+            <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (Nur für CORS-konforme Links)</h3>
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                 <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Imgur-Link (URL mit .jpg/.png) Ihres Platzes ein"
                        class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                        value="https://i.imgur.com/PGERfzo.jpeg"
                 >
                 <button id="setBaseImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md">
-                    Basisbild laden
+                    Link als Basis setzen
                 </button>
             </div>
 
@@ -157,6 +167,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // NEU: Firebase Storage importieren
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // Global verfügbare Variablen (werden von der Canvas-Umgebung bereitgestellt)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -165,7 +177,7 @@
         
         // --- Firebase Initialisierung und Auth ---
         
-        let db, auth;
+        let db, auth, storage; // Storage hinzugefügt
         let userId;
 
         // Zustand
@@ -177,6 +189,8 @@
         const displayImageEl = document.getElementById('displayImage');
         const imageUrlInputEl = document.getElementById('imageUrlInput');
         const setBaseImageBtnEl = document.getElementById('setBaseImageBtn');
+        const fileInputEl = document.getElementById('fileInput'); // NEU
+        const uploadFileBtnEl = document.getElementById('uploadFileBtn'); // NEU
         const promptInputEl = document.getElementById('promptInput');
         const generateBtnEl = document.getElementById('generateBtn');
         const saveBtnEl = document.getElementById('saveBtn');
@@ -238,8 +252,8 @@
 
 
         /**
-         * Hilfsfunktion: Konvertiert ein externes Bild in Base64 und versucht, 
-         * CORS-Probleme durch die Verwendung mehrerer Proxys zu umgehen.
+         * Hilfsfunktion: Konvertiert ein Bild in Base64 (unterstützt nun auch Uploads von Firebase Storage).
+         * Die Proxy-Logik ist nur noch für den Fallback B (manuelle URL) enthalten.
          */
         async function imageToBase64(url) {
             let response;
@@ -247,20 +261,21 @@
             let currentAttemptUrl = url;
 
             // Liste der Abrufversuche (URL oder Proxy-URL)
+            // Firebase Storage URLs benötigen keinen Proxy und sollten beim ersten Versuch erfolgreich sein.
             const attempts = [
-                { url: url, name: 'Direkter Versuch' },
+                { url: url, name: 'Direkter Versuch (bevorzugt Storage/CORS-konform)' },
                 { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, name: 'Proxy 1 (corsproxy.io)' },
                 { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, name: 'Proxy 2 (allorigins.win)' }
             ];
 
             // Prüfen, ob der Link überhaupt ein Bild ist
-            if (!url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link (.jpg, .png etc.).");
+            if (!url.match(/\.(jpg|jpeg|png|gif|webp|apng|avif|tiff|bmp|svg)$/i) && !url.includes("firebasestorage")) {
+                throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link (.jpg, .png etc.) oder eine Firebase Storage URL.");
             }
 
             for (const attempt of attempts) {
                 try {
-                    console.log(`Versuche, Bild über ${attempt.name} abzurufen: ${attempt.url}`);
+                    console.log(`Versuche, Bild über ${attempt.name} abzurufen: ${attempt.url.substring(0, 80)}...`);
                     currentAttemptUrl = attempt.url;
                     
                     response = await fetch(currentAttemptUrl);
@@ -269,12 +284,17 @@
                         throw new Error(`HTTP-Status: ${response.status}`);
                     }
                     
-                    // Klonen Sie die Antwort, da blob() den Stream verbraucht
                     const blob = await response.clone().blob();
                     mimeType = blob.type;
 
                     if (!mimeType || mimeType.startsWith('text/') || mimeType.startsWith('application/')) {
-                        throw new Error(`Ungültiger MIME-Typ (${mimeType}).`);
+                         // Ein weiterer Versuch, den MIME-Typ aus dem Header zu holen, falls blob fehlschlägt
+                         const contentType = response.headers.get('content-type');
+                         if (contentType && contentType.startsWith('image/')) {
+                            mimeType = contentType;
+                         } else {
+                            throw new Error(`Ungültiger MIME-Typ (${mimeType || contentType}).`);
+                         }
                     }
                     
                     // Wenn der Abruf erfolgreich war, verlassen wir die Schleife
@@ -296,8 +316,58 @@
             }
 
             // Wenn alle Versuche fehlschlagen
-            throw new Error("Konnte Basisbild nicht laden oder konvertieren, alle Proxy-Versuche sind fehlgeschlagen.");
+            throw new Error("Konnte Basisbild nicht laden oder konvertieren, alle Abrufversuche sind fehlgeschlagen.");
         }
+
+        /**
+         * NEUE FUNKTION: Lädt eine Datei in Firebase Storage hoch und setzt sie als Basisbild.
+         */
+        async function uploadBaseImage() {
+            if (!storage || !userId) {
+                showModalError("Der Upload-Dienst ist nicht bereit. Bitte warten Sie, bis Firebase initialisiert ist.");
+                return;
+            }
+            const file = fileInputEl.files[0];
+            if (!file) {
+                showModalError("Bitte wählen Sie zuerst eine Bilddatei aus.");
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                showModalError("Bitte wählen Sie nur Bilddateien (.jpg, .png) aus.");
+                return;
+            }
+            
+            uploadFileBtnEl.disabled = true;
+            loadingOverlayEl.classList.remove('hidden');
+            displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=UPLOADING...'; // Lade-Platzhalter
+
+            try {
+                // Pfad: /artifacts/{appId}/public/images/{userId}/{timestamp}_filename
+                // Wir speichern das Bild öffentlich, damit es von der KI-API abgerufen werden kann.
+                const filePath = `/artifacts/${appId}/public/images/${userId}/${Date.now()}_${file.name}`;
+                const imageRef = storageRef(storage, filePath);
+                
+                // Datei hochladen
+                const snapshot = await uploadBytes(imageRef, file);
+                
+                // Öffentliche Download-URL abrufen (DIESE URL IST CORS-KONFORM)
+                const downloadURL = await getDownloadURL(snapshot.ref);
+
+                baseImageUrl = downloadURL;
+                imageUrlInputEl.value = downloadURL; // Update input field
+                resetView(); 
+                displayImageEl.src = baseImageUrl;
+                showModalError("Bild erfolgreich in den Cloud-Speicher hochgeladen und als Basisbild festgelegt!");
+
+            } catch (error) {
+                console.error("Fehler beim Hochladen:", error);
+                showModalError("Fehler beim Hochladen des Bildes: " + error.message);
+            } finally {
+                uploadFileBtnEl.disabled = false;
+                loadingOverlayEl.classList.add('hidden');
+            }
+        }
+
 
         // Setzt die Hauptansicht auf das Basisbild zurück
         function resetView() {
@@ -323,6 +393,9 @@
                 showModalError("Bitte geben Sie eine gültige URL ein.");
             }
         });
+        
+        // NEU: Listener für den Upload-Button
+        uploadFileBtnEl.addEventListener('click', uploadBaseImage);
 
         generateBtnEl.addEventListener('click', generateIdea);
         saveBtnEl.addEventListener('click', saveToGallery);
@@ -455,6 +528,7 @@
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                storage = getStorage(app); // NEU: Storage initialisieren
 
                 // Authentifizierung
                 if (initialAuthToken) {
