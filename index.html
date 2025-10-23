@@ -391,6 +391,8 @@
             generatedImageDataUrl = null;
             saveBtnEl.disabled = true;
             fullscreenBtnEl.disabled = true; 
+            // WICHTIG: Nur Generieren erlauben, wenn ein baseImageUrl vorhanden ist
+            generateBtnEl.disabled = !baseImageUrl; 
         }
         
         // NEU: Funktion zum Setzen des Bereitschaftsstatus
@@ -403,7 +405,6 @@
             imageUrlInputEl.disabled = !isReady;
             setBaseImageBtnEl.disabled = !isReady;
             promptInputEl.disabled = !isReady;
-            generateBtnEl.disabled = !isReady;
             
             // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
             // Wenn App Ready ist, wird der File Input aktiviert.
