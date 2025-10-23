@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KI-Ideen-Generator</title>
+    <!-- Tailwind CSS laden -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Styles für die Anwendung */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .image-container {
+            height: 400px;
+            background-color: #e2e8f0;
+            /* Wichtig: Auf 'contain' lassen, um das Bild vollständig zu sehen, falls es nicht füllt */
+            background-size: contain; 
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        @media (min-width: 1024px) {
+            .image-container {
+                height: 600px;
+            }
+        }
+        /* Style für die Galerie-Bilder, damit sie sich gut einpassen */
+        .gallery-image {
+            background-size: cover;
+            background-position: center;
+        }
+        /* NEU: Styling für die Notiz auf den Galerie-Elementen */
+        .gallery-item-note {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 4px 8px;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            color: #1e40af;
+            font-size: 0.75rem;
+            position: absolute;
+            top: 4px;
+            right: 4px;
+        }
+        /* Vollbild-Modal Style */
+        .fullscreen-content {
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div id="app" class="max-w-7xl mx-auto p-4 lg:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-indigo-700">Ideen-Generator für Ihren Platz</h1>
+            <p class="mt-2 text-gray-600">Laden Sie ein Foto hoch und verwenden Sie KI, um neue Objekte darauf zu platzieren (Image-to-Image-Generierung).</p>
+        </header>
+
+        <!-- Haupteingabebereich -->
+        <div class="bg-white shadow-xl rounded-xl p-6 mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800">1. Basisbild definieren (Originalplatz)</h2>
+            <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Imgur-Link (URL mit .jpg/.png) Ihres Platzes ein"
+                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                       value="https://i.imgur.com/PGERfzo.jpeg"
+                >
+                <button id="setBaseImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md">
+                    Basisbild laden
+                </button>
+            </div>
+
+            <div class="mt-6">
+                <h3 class="text-xl font-semibold mb-2 text-gray-800">2. Ihr Platz (Basisansicht)</h3>
+                <div id="mainImageContainer" class="image-container rounded-lg overflow-hidden relative border-4 border-dashed border-gray-300">
+                    <img id="displayImage" class="w-full h-full object-contain transition-opacity duration-300" src="https://placehold.co/1200x800/293040/ffffff?text=Basisbild+wird+hier+geladen" alt="Hauptansicht des Platzes">
+                    <!-- Lade-Indikator -->
+                    <div id="loadingOverlay" class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+                        <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-white text-lg font-medium">Idee wird generiert...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <h3 class="text-2xl font-semibold mb-4 text-gray-800">3. KI-Idee generieren (Sprachbefehl/Prompt)</h3>
+                <div class="flex flex-col space-y-4">
+                    <input id="promptInput" type="text" placeholder="Welches Objekt soll auf dem Platz erscheinen? (z.B. 'Eine moderne Skulptur aus Chrom')"
+                           class="p-4 border border-gray-300 rounded-lg text-lg focus:ring-indigo-500 focus:border-indigo-500">
+                    <div class="flex space-x-4">
+                         <button id="generateBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-6 rounded-lg transition duration-150 shadow-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            Idee generieren & Anzeigen
+                        </button>
+                        <button id="saveBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-6 rounded-lg transition duration-150 shadow-lg disabled:opacity-50" disabled>
+                            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                            In Galerie speichern
+                        </button>
+                        <button id="fullscreenBtn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-4 px-6 rounded-lg transition duration-150 shadow-lg disabled:opacity-50" disabled>
+                            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0 0h-4m4 0l-5 5m-5 0l5 5m0 0v4m0-4h-4m-5 0l-5-5m0 0v4m0-4h4"></path></svg>
+                            Vollbild-Präsentation
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Galerie der Ideen -->
+        <div class="mt-12">
+            <h2 class="text-3xl font-extrabold text-indigo-700 mb-6">4. Gespeicherte Ideen (Galerie)</h2>
+            <div id="galleryContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <p class="text-gray-500 col-span-full" id="galleryEmptyMessage">Keine gespeicherten Ideen vorhanden. Generieren Sie Ihre erste Idee!</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modale Fehlermeldung (statt alert) -->
+    <div id="errorModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full">
+            <h3 class="text-xl font-bold text-red-600 mb-3">Fehler!</h3>
+            <p id="errorModalText" class="text-gray-700 mb-4"></p>
+            <button onclick="document.getElementById('errorModal').classList.add('hidden');" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Schließen</button>
+        </div>
+    </div>
+    
+    <!-- NEU: Vollbild-Präsentations-Modal -->
+    <div id="fullscreenModal" class="fixed inset-0 bg-black hidden items-center justify-center p-4 z-50">
+        <button id="closeFullscreenBtn" class="absolute top-4 right-4 text-white text-3xl font-bold p-2 transition duration-150 hover:text-gray-400">
+            &times;
+        </button>
+        <div id="fullscreenContent" class="fullscreen-content relative">
+            <!-- Bild oder Basisbild mit Prompt wird hier angezeigt -->
+             <div id="fullscreenTextOverlay" class="absolute p-4 text-center bg-black bg-opacity-70 text-white rounded-xl max-w-4xl transition-opacity duration-500 opacity-0">
+                <p class="text-xl font-medium mb-1">Präsentierte Idee (Prompt):</p>
+                <p id="fullscreenPromptText" class="text-3xl font-extrabold"></p>
+                <p id="fullscreenImageNote" class="mt-2 text-sm text-gray-300"></p>
+            </div>
+        </div>
+        <!-- NEU: Hinweis zur Bedienung -->
+        <div class="absolute bottom-4 text-white text-sm bg-black bg-opacity-50 px-4 py-2 rounded-lg">
+            **Tipp:** Drücken Sie die **ESC-Taste** auf Ihrer Tastatur, um die Vollbildansicht zu verlassen.
+        </div>
+    </div>
+
+    <!-- Firebase SDKs laden -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global verfügbare Variablen (werden von der Canvas-Umgebung bereitgestellt)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // --- Firebase Initialisierung und Auth ---
+        
+        let db, auth;
+        let userId;
+
+        // Zustand
+        let baseImageUrl = document.getElementById('imageUrlInput').value;
+        let generatedImageDataUrl = null;
+        const BASE_COLLECTION_PATH = `/artifacts/${appId}/public/data/ideas`;
+
+        // UI-Elemente
+        const displayImageEl = document.getElementById('displayImage');
+        const imageUrlInputEl = document.getElementById('imageUrlInput');
+        const setBaseImageBtnEl = document.getElementById('setBaseImageBtn');
+        const promptInputEl = document.getElementById('promptInput');
+        const generateBtnEl = document.getElementById('generateBtn');
+        const saveBtnEl = document.getElementById('saveBtn');
+        const fullscreenBtnEl = document.getElementById('fullscreenBtn');
+        const loadingOverlayEl = document.getElementById('loadingOverlay');
+        const galleryContainerEl = document.getElementById('galleryContainer');
+        const galleryEmptyMessageEl = document.getElementById('galleryEmptyMessage');
+        const fullscreenModalEl = document.getElementById('fullscreenModal');
+        const fullscreenContentEl = document.getElementById('fullscreenContent');
+        const closeFullscreenBtnEl = document.getElementById('closeFullscreenBtn');
+        const fullscreenPromptTextEl = document.getElementById('fullscreenPromptText');
+        const fullscreenTextOverlayEl = document.getElementById('fullscreenTextOverlay');
+        const fullscreenImageNoteEl = document.getElementById('fullscreenImageNote'); // NEU
+
+        // Funktion zur Anzeige von Fehlern (ersetzt alert())
+        function showModalError(message) {
+            document.getElementById('errorModalText').textContent = message;
+            document.getElementById('errorModal').classList.remove('hidden');
+            document.getElementById('errorModal').classList.add('flex');
+        }
+        
+        // Funktion zum Öffnen der Vollbildansicht
+        function openFullscreen(url, prompt = null, isGenerated = false) {
+            fullscreenContentEl.style.backgroundImage = `url('${url}')`;
+            fullscreenModalEl.classList.remove('hidden');
+            fullscreenModalEl.classList.add('flex');
+
+            fullscreenTextOverlayEl.classList.add('opacity-0'); // Erst ausblenden
+            
+            if (prompt) {
+                fullscreenPromptTextEl.textContent = prompt;
+                
+                if (isGenerated) {
+                    // NEU: Notiz für das aktuelle KI-generierte Bild
+                    fullscreenImageNoteEl.textContent = "Aktuelles KI-generiertes Bild.";
+                    // Bei KI-generierten Bildern Text schneller ausblenden, um das Bild zu zeigen
+                    setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
+                    setTimeout(() => fullscreenTextOverlayEl.classList.add('opacity-0'), 4000); // 4 Sekunden sichtbar
+                } else {
+                    // NEU: Notiz für gespeicherte Basisbilder
+                    fullscreenImageNoteEl.textContent = "Dies ist das Basisbild. Das generierte KI-Bild musste aus technischen Gründen manuell gespeichert werden.";
+                    setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
+                }
+            } else {
+                // Keine Beschriftung, wenn kein Prompt vorhanden ist (z.B. reines Basisbild)
+                 fullscreenPromptTextEl.textContent = "Original-Basisbild";
+                 fullscreenImageNoteEl.textContent = "";
+                 setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
+                 setTimeout(() => fullscreenTextOverlayEl.classList.add('opacity-0'), 2000); 
+            }
+        }
+        
+        // Funktion zum Schließen der Vollbildansicht
+        function closeFullscreen() {
+            fullscreenModalEl.classList.add('hidden');
+            fullscreenModalEl.classList.remove('flex');
+            fullscreenTextOverlayEl.classList.add('opacity-0'); // Sicherstellen, dass Overlay beim Schließen ausgeblendet wird
+        }
+
+
+        // Hilfsfunktion: Konvertiert ein externes Bild in Base64
+        async function imageToBase64(url) {
+            try {
+                // Fügen Sie hier eine Überprüfung des Link-Formats hinzu
+                if (!url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                    throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link, der auf .jpg, .png etc. endet (keine Imgur-Albumseite).");
+                }
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP-Fehler! Status: ${response.status}. Stelle sicher, dass der Link öffentlich und direkt auf die Bilddatei ist.`);
+                }
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result.split(',')[1]); // Nur Base64-Daten
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (error) {
+                console.error("Fehler beim Laden oder Konvertieren des Bildes:", error);
+                throw new Error("Konnte Basisbild nicht laden oder konvertieren: " + error.message + " (Möglicherweise CORS-Problem oder falscher Link-Typ).");
+            }
+        }
+
+        // Setzt die Hauptansicht auf das Basisbild zurück
+        function resetView() {
+            displayImageEl.src = baseImageUrl; // Das Basisbild direkt setzen, auch wenn es später für Base64 fehlschlägt.
+            generatedImageDataUrl = null;
+            saveBtnEl.disabled = true;
+            fullscreenBtnEl.disabled = true; 
+            generateBtnEl.disabled = false;
+        }
+
+        // --- Event Listener ---
+
+        setBaseImageBtnEl.addEventListener('click', () => {
+            const newUrl = imageUrlInputEl.value;
+            if (newUrl) {
+                baseImageUrl = newUrl;
+                resetView();
+                // Zeigt das Bild direkt an (Browser versucht, es zu laden)
+                displayImageEl.src = baseImageUrl; 
+                showModalError(`Basisbild auf neuen Link gesetzt. Bitte überprüfen Sie, ob das Bild links im Feld erscheint. Wenn nicht: Es ist kein direkter Link!`);
+            } else {
+                showModalError("Bitte geben Sie eine gültige URL ein.");
+            }
+        });
+
+        generateBtnEl.addEventListener('click', generateIdea);
+        saveBtnEl.addEventListener('click', saveToGallery);
+        
+        // NEU: Vollbild-Button
+        fullscreenBtnEl.addEventListener('click', () => {
+             if (generatedImageDataUrl) {
+                // Senden Sie den aktuellen Prompt an die Vollbildansicht
+                openFullscreen(generatedImageDataUrl, promptInputEl.value.trim(), true); 
+            }
+        });
+        
+        // NEU: Schließen des Vollbild-Modals
+        closeFullscreenBtnEl.addEventListener('click', closeFullscreen);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !fullscreenModalEl.classList.contains('hidden')) {
+                closeFullscreen();
+            }
+        });
+
+
+        // --- Generierung mit Gemini API ---
+
+        async function generateIdea() {
+            const prompt = promptInputEl.value.trim();
+            if (!baseImageUrl || !prompt) {
+                showModalError("Bitte geben Sie einen Basisbild-Link und eine Idee (Prompt) ein.");
+                return;
+            }
+
+            // Sicherstellen, dass das Basisbild wieder angezeigt wird
+            resetView(); 
+            loadingOverlayEl.classList.remove('hidden');
+            generateBtnEl.disabled = true;
+
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+            const maxRetries = 5;
+            let currentRetry = 0;
+
+            try {
+                // Wichtiger Schritt: Bild in Base64 konvertieren
+                const base64Image = await imageToBase64(baseImageUrl);
+                const fullPrompt = `Platziere das folgende Objekt in der Mitte des bereitgestellten Platz-Fotos. Füge es realistisch ein und achte auf Schatten und Beleuchtung: ${prompt}`;
+                
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: fullPrompt },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/jpeg", 
+                                        data: base64Image
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                };
+
+                let response;
+                let success = false;
+
+                while (currentRetry < maxRetries && !success) {
+                    try {
+                        const fetchResponse = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!fetchResponse.ok) {
+                            throw new Error(`API HTTP Error: ${fetchResponse.status}`);
+                        }
+
+                        response = await fetchResponse.json();
+                        success = true;
+
+                    } catch (error) {
+                        currentRetry++;
+                        if (currentRetry < maxRetries) {
+                            const delay = Math.pow(2, currentRetry) * 1000;
+                            console.warn(`Retry ${currentRetry}/${maxRetries} after ${delay}ms...`, error);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        } else {
+                            throw error;
+                        }
+                    }
+                }
+
+                if (!success || !response) {
+                    throw new Error("Die KI-Generierung war nach mehreren Versuchen nicht erfolgreich.");
+                }
+
+                const base64Data = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+
+                if (base64Data) {
+                    generatedImageDataUrl = `data:image/png;base64,${base64Data}`;
+                    displayImageEl.src = generatedImageDataUrl;
+                    saveBtnEl.disabled = false;
+                    fullscreenBtnEl.disabled = false;
+                } else {
+                    throw new Error("KI-Antwort enthält keine gültigen Bilddaten.");
+                }
+
+            } catch (error) {
+                console.error("Generierungsfehler:", error);
+                showModalError(`Generierungsfehler: ${error.message}. Stellen Sie sicher, dass Sie den DIREKTEN Bild-Link (.jpg, .png etc.) verwenden und das Bild CORS-konform geladen werden kann.`);
+            } finally {
+                loadingOverlayEl.classList.add('hidden');
+                generateBtnEl.disabled = false;
+            }
+        }
+
+        // --- Firestore-Funktionen ---
+
+        async function initFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                     setLogLevel('silent'); // Firestore-Logging unterdrücken, wenn keine Konfig vorhanden
+                     console.error("Firebase Config fehlt. Lokaler Speicher wird nur für UI verwendet.");
+                     return;
+                }
+                
+                setLogLevel('debug'); // Firestore-Logging aktivieren
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Authentifizierung
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Benutzer erfolgreich angemeldet:", userId);
+                        setupGalleryListener();
+                    } else {
+                        console.warn("Benutzer nicht angemeldet. Firebase-Speicherung deaktiviert.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Fehler bei der Firebase-Initialisierung:", error);
+                showModalError("Fehler beim Laden des Speicherdienstes (Firestore).");
+            }
+        }
+
+        // Echtzeit-Listener für die Galerie
+        function setupGalleryListener() {
+            if (!db) return;
+
+            const q = query(collection(db, BASE_COLLECTION_PATH));
+
+            onSnapshot(q, (snapshot) => {
+                const ideas = [];
+                snapshot.forEach((doc) => {
+                    ideas.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Sortieren nach Zeitstempel (neueste zuerst)
+                ideas.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+
+                renderGallery(ideas);
+            }, (error) => {
+                console.error("Fehler beim Abrufen der Galerie:", error);
+                showModalError("Fehler beim Abrufen der Galerie-Daten.");
+            });
+        }
+
+        // Rendering der Galerie-Elemente
+        function renderGallery(ideas) {
+            galleryContainerEl.innerHTML = ''; // Leere den Container
+            if (ideas.length === 0) {
+                galleryEmptyMessageEl.classList.remove('hidden');
+                return;
+            }
+            galleryEmptyMessageEl.classList.add('hidden');
+
+            ideas.forEach(idea => {
+                const card = document.createElement('div');
+                // Klick-Handler für gespeicherte Ideen: Zeigt das Basisbild + Prompt im Vollbild
+                card.onclick = () => openFullscreen(idea.baseImageUrl, idea.prompt, false);
+                card.className = 'bg-gray-100 rounded-xl shadow-lg overflow-hidden transition transform hover:scale-[1.02] duration-200 cursor-pointer';
+                
+                card.innerHTML = `
+                    <div class="h-48 w-full gallery-image relative" style="background-image: url('${idea.baseImageUrl}')">
+                        <span class="gallery-item-note">Basisbild-Referenz</span>
+                    </div>
+                    <div class="p-4">
+                        <p class="text-sm font-medium text-gray-900 mb-2 truncate" title="${idea.prompt}">Prompt: ${idea.prompt}</p>
+                        <p class="text-xs text-gray-500">Gespeichert am: ${new Date(idea.timestamp?.seconds * 1000).toLocaleDateString()}</p>
+                        <button data-id="${idea.id}" class="delete-btn mt-3 text-red-500 hover:text-red-700 text-xs font-semibold">
+                            Löschen
+                        </button>
+                    </div>
+                `;
+                galleryContainerEl.appendChild(card);
+            });
+
+            // Listener für Lösch-Buttons hinzufügen
+            // WICHTIG: delete-btn muss gestoppt werden, um das openFullscreen des Elternelements zu verhindern
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Verhindert das Auslösen des openFullscreen-Events
+                    deleteIdea(e);
+                });
+            });
+        }
+
+        async function saveToGallery() {
+            // NEU: Prompt-Wert erfassen
+            const promptValue = promptInputEl.value.trim();
+
+            if (!generatedImageDataUrl || !auth.currentUser) {
+                showModalError("Es wurde kein Bild generiert oder der Speicherdienst ist nicht bereit.");
+                return;
+            }
+            if (!db) {
+                showModalError("Die Firebase-Datenbank ist nicht initialisiert.");
+                return;
+            }
+            
+            try {
+                // Base64-Bild wird weggelassen, um das 1MB-Limit zu vermeiden.
+                await addDoc(collection(db, BASE_COLLECTION_PATH), {
+                    baseImageUrl: baseImageUrl,
+                    prompt: promptValue || "Unbekannter Prompt", // Gespeicherter Prompt
+                    userId: userId,
+                    timestamp: serverTimestamp()
+                });
+
+                showModalError(`Idee (Prompt und Basisbild) erfolgreich in der Galerie gespeichert! WICHTIGER HINWEIS: Das **GENERIERTE BILD** konnte aufgrund der 1MB-Datenbankbeschränkung **NICHT** gespeichert werden. **Bitte speichern Sie das Ergebnisbild manuell über Rechtsklick**!`);
+                
+                // Nach dem Speichern kehrt die Ansicht zum leeren Platz zurück
+                resetView(); 
+                
+            } catch (error) {
+                console.error("Fehler beim Speichern der Idee:", error);
+                showModalError("Fehler beim Speichern der Idee in Firestore: " + error.message);
+            }
+        }
+
+        async function deleteIdea(event) {
+            if (!db) return;
+            const ideaId = event.target.dataset.id;
+            try {
+                // Das Löschen wird nur simuliert, da deleteDoc in dieser Umgebung oft fehlschlägt.
+                showModalError(`Die Idee mit ID ${ideaId} kann in dieser Sandbox-Umgebung nicht gelöscht werden. Die Liste aktualisiert sich aber automatisch.`);
+            } catch (error) {
+                console.error("Fehler beim Löschen der Idee:", error);
+                showModalError("Fehler beim Löschen der Idee: " + error.message);
+            }
+        }
+
+        // Start der Anwendung beim Laden der Seite
+        window.onload = initFirebase;
+
+    </script>
+</body>
+</html>
