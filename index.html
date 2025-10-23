@@ -59,7 +59,7 @@
 
     <div id="app" class="max-w-7xl mx-auto p-4 lg:p-8">
         <header class="text-center mb-10">
-            <h1 class="text-4xl font-extrabold text-indigo-700">Ideen-Generator für Ihren Platz</h1>
+            <h1 class="4xl font-extrabold text-indigo-700">Ideen-Generator für Ihren Platz</h1>
             <p class="mt-2 text-gray-600">Laden Sie ein Foto hoch oder geben Sie einen CORS-konformen Link ein, um neue Objekte darauf zu platzieren (Image-to-Image-Generierung).</p>
         </header>
 
@@ -73,16 +73,16 @@
             </div>
 
             <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
-                <h3 class="text-lg font-semibold mb-2 text-orange-700">A: Bild hochladen (Empfohlen: Behebt 403/CORS-Fehler dauerhaft)</h3>
+                <h3 class="text-lg font-semibold mb-2 text-orange-700">A: Bild hochladen (STABILE LÖSUNG: Funktioniert garantiert auf GitHub Pages)</h3>
                 <input type="file" id="fileInput" accept="image/jpeg, image/png" class="mb-2 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none" disabled>
                 <button id="uploadFileBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
                     Bild hochladen & als Basis setzen
                 </button>
             </div>
 
-            <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (Nur für CORS-konforme Links)</h3>
+            <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (EXTREM INSTABIL: Nicht empfohlen auf GitHub)</h3>
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Imgur-Link (URL mit .jpg/.png) Ihres Platzes ein"
+                <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Bild-Link (URL mit .jpg/.png) Ihres Platzes ein"
                        class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                        value="https://i.imgur.com/PGERfzo.jpeg"
                        disabled
@@ -108,7 +108,7 @@
             </div>
 
             <div class="mt-8">
-                <h3 class="text-2xl font-semibold mb-4 text-gray-800">3. KI-Idee generieren (Sprachbefehl/Prompt)</h3>
+                <h3 class="2xl font-semibold mb-4 text-gray-800">3. KI-Idee generieren (Prompt)</h3>
                 <div class="flex flex-col space-y-4">
                     <input id="promptInput" type="text" placeholder="Welches Objekt soll auf dem Platz erscheinen? (z.B. 'Eine moderne Skulptur aus Chrom')"
                            class="p-4 border border-gray-300 rounded-lg text-lg focus:ring-indigo-500 focus:border-indigo-500" disabled>
@@ -143,7 +143,7 @@
     <!-- Modale Fehlermeldung (statt alert) -->
     <div id="errorModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
         <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full">
-            <h3 class="text-xl font-bold text-red-600 mb-3">Fehler!</h3>
+            <h3 class="xl font-bold text-red-600 mb-3">Fehler!</h3>
             <p id="errorModalText" class="text-gray-700 mb-4"></p>
             <button onclick="document.getElementById('errorModal').classList.add('hidden');" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Schließen</button>
         </div>
@@ -173,7 +173,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        // NEU: Firebase Storage importieren
+        // Firebase Storage wird nur bei Bedarf geladen, bleibt hier aber für die Canvas drin
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // Global verfügbare Variablen (werden von der Canvas-Umgebung bereitgestellt)
@@ -183,8 +183,9 @@
         
         // --- Firebase Initialisierung und Auth ---
         
-        let db, auth, storage; // Storage hinzugefügt
+        let db, auth, storage; 
         let userId;
+        let isFullFirebase = false; // Flag, ob Firebase Storage/Firestore aktiv ist
 
         // Zustand
         let baseImageUrl = document.getElementById('imageUrlInput').value;
@@ -210,7 +211,7 @@
         const fullscreenPromptTextEl = document.getElementById('fullscreenPromptText');
         const fullscreenTextOverlayEl = document.getElementById('fullscreenTextOverlay');
         const fullscreenImageNoteEl = document.getElementById('fullscreenImageNote');
-        const statusIndicatorEl = document.getElementById('statusIndicator'); // NEU
+        const statusIndicatorEl = document.getElementById('statusIndicator'); 
 
         // Funktion zur Anzeige von Fehlern (ersetzt alert())
         function showModalError(message) {
@@ -225,24 +226,20 @@
             fullscreenModalEl.classList.remove('hidden');
             fullscreenModalEl.classList.add('flex');
 
-            fullscreenTextOverlayEl.classList.add('opacity-0'); // Erst ausblenden
+            fullscreenTextOverlayEl.classList.add('opacity-0'); 
             
             if (prompt) {
                 fullscreenPromptTextEl.textContent = prompt;
                 
                 if (isGenerated) {
-                    // NEU: Notiz für das aktuelle KI-generierte Bild
                     fullscreenImageNoteEl.textContent = "Aktuelles KI-generiertes Bild.";
-                    // Bei KI-generierten Bildern Text schneller ausblenden, um das Bild zu zeigen
                     setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
-                    setTimeout(() => fullscreenTextOverlayEl.classList.add('opacity-0'), 4000); // 4 Sekunden sichtbar
+                    setTimeout(() => fullscreenTextOverlayEl.classList.add('opacity-0'), 4000); 
                 } else {
-                    // NEU: Notiz für gespeicherte Basisbilder
                     fullscreenImageNoteEl.textContent = "Dies ist das Basisbild. Das generierte KI-Bild musste aus technischen Gründen manuell gespeichert werden.";
                     setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
                 }
             } else {
-                // Keine Beschriftung, wenn kein Prompt vorhanden ist (z.B. reines Basisbild)
                  fullscreenPromptTextEl.textContent = "Original-Basisbild";
                  fullscreenImageNoteEl.textContent = "";
                  setTimeout(() => fullscreenTextOverlayEl.classList.remove('opacity-0'), 100);
@@ -254,37 +251,78 @@
         function closeFullscreen() {
             fullscreenModalEl.classList.add('hidden');
             fullscreenModalEl.classList.remove('flex');
-            fullscreenTextOverlayEl.classList.add('opacity-0'); // Sicherstellen, dass Overlay beim Schließen ausgeblendet wird
+            fullscreenTextOverlayEl.classList.add('opacity-0'); 
         }
 
+        /**
+         * NEUE LÖSUNG: Liest die Datei direkt aus dem Input-Feld in Base64 ein (keine Netzwerk-Abhängigkeit).
+         * Wird für Option A verwendet, um den 403-Fehler zu umgehen.
+         */
+        function fileToDataURL() {
+            const file = fileInputEl.files[0];
+            if (!file) {
+                showModalError("Bitte wählen Sie eine Bilddatei aus.");
+                return;
+            }
+
+            uploadFileBtnEl.disabled = true;
+            loadingOverlayEl.classList.remove('hidden');
+            displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=LÄDT+BILDDATEN...'; 
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                baseImageUrl = reader.result; // Data URL (data:image/jpeg;base64,...)
+                imageUrlInputEl.value = "Datei erfolgreich geladen (Base64-Daten)";
+                resetView();
+                displayImageEl.src = baseImageUrl;
+                showModalError("Bild erfolgreich geladen (Base64). Sie können jetzt generieren!");
+                uploadFileBtnEl.disabled = false;
+                loadingOverlayEl.classList.add('hidden');
+            };
+            reader.onerror = () => {
+                showModalError("Fehler beim Lesen der Datei.");
+                uploadFileBtnEl.disabled = false;
+                loadingOverlayEl.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
 
         /**
-         * Hilfsfunktion: Konvertiert ein Bild in Base64 (unterstützt nun auch Uploads von Firebase Storage).
-         * Die Proxy-Logik ist nur noch für den Fallback B (manuelle URL) enthalten.
+         * Angepasste Hilfsfunktion: Kann jetzt entweder einen Link abrufen (mit Proxy-Fallback, für Option B)
+         * ODER die Base64-Daten direkt extrahieren, wenn die baseImageUrl bereits eine Data URL ist (für Option A).
          */
         async function imageToBase64(url) {
+            // PRÜFUNG 1: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
+            if (url.startsWith('data:')) {
+                const parts = url.split(',');
+                const mimeTypeMatch = parts[0].match(/:(.*?);/);
+                if (mimeTypeMatch) {
+                    return {
+                        base64Data: parts[1],
+                        mimeType: mimeTypeMatch[1]
+                    };
+                }
+                throw new Error("Ungültiges Base64-Datenformat.");
+            }
+
+            // PRÜFUNG 2: Wenn es kein Base64 ist, versuchen Sie den externen Abruf (Option B)
             let response;
             let mimeType;
-            let currentAttemptUrl = url;
 
-            // Liste der Abrufversuche (URL oder Proxy-URL)
             const attempts = [
-                { url: url, name: 'Direkter Versuch (bevorzugt Storage/CORS-konform)' },
-                { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, name: 'Proxy 1 (corsproxy.io)' },
-                { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, name: 'Proxy 2 (allorigins.win)' }
+                { url: url, name: 'Direkter Versuch' },
+                { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, name: 'Proxy 1' },
+                { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, name: 'Proxy 2' }
             ];
 
-            // Prüfen, ob der Link überhaupt ein Bild ist
-            if (!url.match(/\.(jpg|jpeg|png|gif|webp|apng|avif|tiff|bmp|svg)$/i) && !url.includes("firebasestorage")) {
-                throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link (.jpg, .png etc.) oder eine Firebase Storage URL.");
+            if (!url.match(/\.(jpg|jpeg|png|gif|webp|apng|avif|tiff|bmp|svg)$/i)) {
+                throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link (.jpg, .png etc.)");
             }
 
             for (const attempt of attempts) {
                 try {
                     console.log(`Versuche, Bild über ${attempt.name} abzurufen: ${attempt.url.substring(0, 80)}...`);
-                    currentAttemptUrl = attempt.url;
-                    
-                    response = await fetch(currentAttemptUrl);
+                    response = await fetch(attempt.url);
                     
                     if (!response.ok || response.status === 403) {
                         throw new Error(`HTTP-Status: ${response.status}`);
@@ -294,7 +332,6 @@
                     mimeType = blob.type;
 
                     if (!mimeType || mimeType.startsWith('text/') || mimeType.startsWith('application/')) {
-                         // Ein weiterer Versuch, den MIME-Typ aus dem Header zu holen, falls blob fehlschlägt
                          const contentType = response.headers.get('content-type');
                          if (contentType && contentType.startsWith('image/')) {
                             mimeType = contentType;
@@ -303,7 +340,6 @@
                          }
                     }
                     
-                    // Wenn der Abruf erfolgreich war, verlassen wir die Schleife
                     const blobFinal = await response.blob(); 
                     return new Promise((resolve, reject) => {
                         const reader = new FileReader();
@@ -317,75 +353,23 @@
 
                 } catch (error) {
                     console.warn(`Abrufversuch über ${attempt.name} fehlgeschlagen. Fehler: ${error.message}`);
-                    continue; // Gehe zum nächsten Versuch in der Schleife
+                    continue; 
                 }
             }
-
-            // Wenn alle Versuche fehlschlagen
-            throw new Error("Konnte Basisbild nicht laden oder konvertieren, alle Abrufversuche sind fehlgeschlagen.");
-        }
-
-        /**
-         * NEUE FUNKTION: Lädt eine Datei in Firebase Storage hoch und setzt sie als Basisbild.
-         */
-        async function uploadBaseImage() {
-            if (!storage || !userId) {
-                showModalError("Der Upload-Dienst ist nicht bereit. Bitte warten Sie, bis Firebase initialisiert ist.");
-                return;
-            }
-            const file = fileInputEl.files[0];
-            if (!file) {
-                showModalError("Bitte wählen Sie zuerst eine Bilddatei aus.");
-                return;
-            }
-            if (!file.type.startsWith('image/')) {
-                showModalError("Bitte wählen Sie nur Bilddateien (.jpg, .png) aus.");
-                return;
-            }
-            
-            uploadFileBtnEl.disabled = true;
-            loadingOverlayEl.classList.remove('hidden');
-            displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=UPLOADING...'; // Lade-Platzhalter
-
-            try {
-                // Pfad: /artifacts/{appId}/public/images/{userId}/{timestamp}_filename
-                // Wir speichern das Bild öffentlich, damit es von der KI-API abgerufen werden kann.
-                const filePath = `/artifacts/${appId}/public/images/${userId}/${Date.now()}_${file.name}`;
-                const imageRef = storageRef(storage, filePath);
-                
-                // Datei hochladen
-                const snapshot = await uploadBytes(imageRef, file);
-                
-                // Öffentliche Download-URL abrufen (DIESE URL IST CORS-KONFORM)
-                const downloadURL = await getDownloadURL(snapshot.ref);
-
-                baseImageUrl = downloadURL;
-                imageUrlInputEl.value = downloadURL; // Update input field
-                resetView(); 
-                displayImageEl.src = baseImageUrl;
-                showModalError("Bild erfolgreich in den Cloud-Speicher hochgeladen und als Basisbild festgelegt!");
-
-            } catch (error) {
-                console.error("Fehler beim Hochladen:", error);
-                showModalError("Fehler beim Hochladen des Bildes: " + error.message);
-            } finally {
-                uploadFileBtnEl.disabled = false;
-                loadingOverlayEl.classList.add('hidden');
-            }
+            throw new Error("Konnte Basisbild nicht laden oder konvertieren. Bitte Option A (Upload) verwenden.");
         }
 
 
         // Setzt die Hauptansicht auf das Basisbild zurück
         function resetView() {
-            displayImageEl.src = baseImageUrl; // Das Basisbild direkt setzen, auch wenn es später für Base64 fehlschlägt.
+            displayImageEl.src = baseImageUrl; 
             generatedImageDataUrl = null;
             saveBtnEl.disabled = true;
             fullscreenBtnEl.disabled = true; 
-            // generateBtnEl.disabled = false; // Wird jetzt von setReadyState gesteuert
         }
         
         // NEU: Funktion zum Setzen des Bereitschaftsstatus
-        function setReadyState(isReady, message, isFullFirebase) {
+        function setReadyState(isReady, message, isFullFirebaseActive) {
             statusIndicatorEl.textContent = message;
             statusIndicatorEl.classList.remove('bg-gray-200', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
             statusIndicatorEl.classList.add(isReady ? 'bg-green-100' : 'bg-red-100', isReady ? 'text-green-800' : 'text-red-800');
@@ -395,19 +379,20 @@
             setBaseImageBtnEl.disabled = !isReady;
             promptInputEl.disabled = !isReady;
             generateBtnEl.disabled = !isReady;
-
+            
             // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
-            if (isFullFirebase) {
+            if (isFullFirebaseActive) {
                 fileInputEl.disabled = !isReady;
-                uploadFileBtnEl.disabled = !isReady;
+                uploadFileBtn.disabled = !isReady;
             } else {
-                // Dauerhaft deaktivieren, wenn keine Firebase-Konfig verfügbar ist (z.B. GitHub Pages)
-                fileInputEl.disabled = true;
-                uploadFileBtnEl.disabled = true;
-                saveBtnEl.disabled = true; // Speichern ist ohne Firestore sinnlos
+                // Option A ist die stabile Hauptfunktion und muss IMMER aktiviert sein, wenn App Ready ist
+                fileInputEl.disabled = !isReady; 
+                uploadFileBtnEl.disabled = !isReady;
+                
+                // Speichern ist ohne Firestore auf GitHub Pages sinnlos
+                saveBtnEl.disabled = true; 
             }
             
-            // Initiales Laden des Basisbildes in die Ansicht
             if(isReady) resetView();
         }
 
@@ -418,30 +403,25 @@
             if (newUrl) {
                 baseImageUrl = newUrl;
                 resetView();
-                // Zeigt das Bild direkt an (Browser versucht, es zu laden)
                 displayImageEl.src = baseImageUrl; 
-                // Kurze Meldung, dass der Link gesetzt wurde.
-                showModalError(`Basisbild auf neuen Link gesetzt. Nun können Sie eine Idee generieren. Beachten Sie, dass externe Links möglicherweise immer noch CORS-Probleme (403-Fehler) verursachen können.`);
+                showModalError(`Basisbild auf neuen Link gesetzt. Nun können Sie eine Idee generieren. **ACHTUNG:** Externe Links verursachen häufig CORS-Probleme (403-Fehler).`);
             } else {
                 showModalError("Bitte geben Sie eine gültige URL ein.");
             }
         });
         
-        // NEU: Listener für den Upload-Button
-        uploadFileBtnEl.addEventListener('click', uploadBaseImage);
+        // NEU: Listener für den Upload-Button nutzt jetzt die lokale Konvertierung
+        uploadFileBtnEl.addEventListener('click', fileToDataURL);
 
         generateBtnEl.addEventListener('click', generateIdea);
         saveBtnEl.addEventListener('click', saveToGallery);
         
-        // NEU: Vollbild-Button
         fullscreenBtnEl.addEventListener('click', () => {
              if (generatedImageDataUrl) {
-                // Senden Sie den aktuellen Prompt an die Vollbildansicht
                 openFullscreen(generatedImageDataUrl, promptInputEl.value.trim(), true); 
             }
         });
         
-        // NEU: Schließen des Vollbild-Modals
         closeFullscreenBtnEl.addEventListener('click', closeFullscreen);
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !fullscreenModalEl.classList.contains('hidden')) {
@@ -455,11 +435,10 @@
         async function generateIdea() {
             const prompt = promptInputEl.value.trim();
             if (!baseImageUrl || !prompt) {
-                showModalError("Bitte geben Sie einen Basisbild-Link und eine Idee (Prompt) ein.");
+                showModalError("Bitte laden Sie zuerst ein Basisbild hoch (Option A) oder geben Sie einen Link ein (Option B) und eine Idee (Prompt) ein.");
                 return;
             }
 
-            // Sicherstellen, dass das Basisbild wieder angezeigt wird
             resetView(); 
             loadingOverlayEl.classList.remove('hidden');
             generateBtnEl.disabled = true;
@@ -470,7 +449,7 @@
             let currentRetry = 0;
 
             try {
-                // Wichtiger Schritt: Bild in Base64 konvertieren (mit Proxy-Fallback)
+                // Base64-Daten abrufen (entweder aus der DataURL oder vom externen Link)
                 const { base64Data, mimeType } = await imageToBase64(baseImageUrl); 
                 const fullPrompt = `Platziere das folgende Objekt in der Mitte des bereitgestellten Platz-Fotos. Füge es realistisch ein und achte auf Schatten und Beleuchtung: ${prompt}`;
                 
@@ -482,7 +461,7 @@
                                 { text: fullPrompt },
                                 {
                                     inlineData: {
-                                        mimeType: mimeType || "image/jpeg", // <-- Verwenden des korrekten MIME-Typ
+                                        mimeType: mimeType || "image/jpeg", 
                                         data: base64Data
                                     }
                                 }
@@ -503,7 +482,6 @@
                         });
 
                         if (!fetchResponse.ok) {
-                            // Wenn 403 oder ein anderer API-Fehler auftritt, wird er hier geworfen
                             throw new Error(`API HTTP Error: ${fetchResponse.status}`);
                         }
 
@@ -532,8 +510,7 @@
                     generatedImageDataUrl = `data:image/png;base64,${base64DataResult}`;
                     displayImageEl.src = generatedImageDataUrl;
                     
-                    // Speichern/Vollbild nur aktivieren, wenn das Bild generiert wurde
-                    saveBtnEl.disabled = false;
+                    if (isFullFirebase) saveBtnEl.disabled = false; // Speichern nur wenn Firebase aktiv ist
                     fullscreenBtnEl.disabled = false;
                 } else {
                     throw new Error("KI-Antwort enthält keine gültigen Bilddaten.");
@@ -541,8 +518,8 @@
 
             } catch (error) {
                 console.error("Generierungsfehler:", error);
-                // Die Fehlermeldung wurde präziser gemacht, um den HTTP-Code anzuzeigen
-                showModalError(`Generierungsfehler: ${error.message}. Stellen Sie sicher, dass der Basisbild-Link (Feld B) korrekt ist und der Imgur-Server derzeit nicht blockiert.`);
+                // Wichtiger Hinweis: Wenn der 403-Fehler hier auftritt, liegt es am Link (Feld B)
+                showModalError(`Generierungsfehler: ${error.message}. **VERWENDEN SIE OPTION A (BILD HOCHLADEN)** für eine stabile Funktion auf GitHub Pages.`);
             } finally {
                 loadingOverlayEl.classList.add('hidden');
                 generateBtnEl.disabled = false;
@@ -557,8 +534,9 @@
             if (Object.keys(firebaseConfig).length === 0) {
                  setLogLevel('silent');
                  console.warn("Firebase Config fehlt. Speicherung und Upload sind deaktiviert.");
+                 isFullFirebase = false;
                  // Nur Generierungsfunktionen aktivieren, da Firebase fehlt.
-                 setReadyState(true, "Basis-Generierung (Link-Eingabe) bereit. Speicherung/Upload deaktiviert.", false);
+                 setReadyState(true, "Basis-Generierung (Upload/Link) bereit. Speicherung/Galerie deaktiviert.", false);
                  return;
             }
             
@@ -569,6 +547,7 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 storage = getStorage(app); 
+                isFullFirebase = true; // Firebase ist aktiv
 
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
@@ -582,14 +561,15 @@
                         setReadyState(true, "App ist VOLLSTÄNDIG bereit (Upload, Speicherung & Generierung aktiv).", true);
                         setupGalleryListener();
                     } else {
-                        setReadyState(false, "Fehler: Speicherdienst nicht verfügbar (Anmeldung fehlgeschlagen).", false);
+                        setReadyState(false, "Fehler: Speicherdienst nicht verfügbar (Anmeldung fehlgeschlagen).", true);
                     }
                 });
 
             } catch (error) {
                 console.error("Fehler bei der Firebase-Initialisierung:", error);
                 showModalError("Fehler beim Laden des Speicherdienstes (Firestore).");
-                setReadyState(false, "Fehler: Speicherdienst konnte nicht initialisiert werden.", false);
+                isFullFirebase = false;
+                setReadyState(true, "Basis-Generierung bereit. Speicherung/Upload deaktiviert (Fehler bei Firebase).", false);
             }
         }
 
@@ -605,7 +585,6 @@
                     ideas.push({ id: doc.id, ...doc.data() });
                 });
 
-                // Sortieren nach Zeitstempel (neueste zuerst)
                 ideas.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
 
                 renderGallery(ideas);
@@ -617,7 +596,7 @@
 
         // Rendering der Galerie-Elemente
         function renderGallery(ideas) {
-            galleryContainerEl.innerHTML = ''; // Leere den Container
+            galleryContainerEl.innerHTML = ''; 
             if (ideas.length === 0) {
                 galleryEmptyMessageEl.classList.remove('hidden');
                 return;
@@ -626,7 +605,6 @@
 
             ideas.forEach(idea => {
                 const card = document.createElement('div');
-                // Klick-Handler für gespeicherte Ideen: Zeigt das Basisbild + Prompt im Vollbild
                 card.onclick = () => openFullscreen(idea.baseImageUrl, idea.prompt, false);
                 card.className = 'bg-gray-100 rounded-xl shadow-lg overflow-hidden transition transform hover:scale-[1.02] duration-200 cursor-pointer';
                 
@@ -645,18 +623,15 @@
                 galleryContainerEl.appendChild(card);
             });
 
-            // Listener für Lösch-Buttons hinzufügen
-            // WICHTIG: delete-btn muss gestoppt werden, um das openFullscreen des Elternelements zu verhindern
             document.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Verhindert das Auslösen des openFullscreen-Events
+                    e.stopPropagation(); 
                     deleteIdea(e);
                 });
             });
         }
 
         async function saveToGallery() {
-            // NEU: Prompt-Wert erfassen
             const promptValue = promptInputEl.value.trim();
 
             if (!generatedImageDataUrl || !auth.currentUser) {
@@ -669,17 +644,18 @@
             }
             
             try {
-                // Base64-Bild wird weggelassen, um das 1MB-Limit zu vermeiden.
+                // Wenn das Basisbild Base64 ist (Option A), speichern wir nur einen Platzhalter-Link für Firestore
+                const savedBaseUrl = baseImageUrl.startsWith('data:') ? "Base64-Daten (nicht speicherbar)" : baseImageUrl;
+
                 await addDoc(collection(db, BASE_COLLECTION_PATH), {
-                    baseImageUrl: baseImageUrl,
-                    prompt: promptValue || "Unbekannter Prompt", // Gespeicherter Prompt
+                    baseImageUrl: savedBaseUrl,
+                    prompt: promptValue || "Unbekannter Prompt", 
                     userId: userId,
                     timestamp: serverTimestamp()
                 });
 
-                showModalError(`Idee (Prompt und Basisbild) erfolgreich in der Galerie gespeichert! WICHTIGER HINWEIS: Das **GENERIERTE BILD** konnte aufgrund der 1MB-Datenbankbeschränkung **NICHT** gespeichert werden. **Bitte speichern Sie das Ergebnisbild manuell über Rechtsklick**!`);
+                showModalError(`Idee (Prompt und Basisbild-Referenz) erfolgreich in der Galerie gespeichert! WICHTIGER HINWEIS: Das GENERIERTE BILD konnte aufgrund der 1MB-Datenbankbeschränkung NICHT gespeichert werden. Bitte speichern Sie das Ergebnisbild manuell über Rechtsklick!`);
                 
-                // Nach dem Speichern kehrt die Ansicht zum leeren Platz zurück
                 resetView(); 
                 
             } catch (error) {
@@ -692,7 +668,6 @@
             if (!db) return;
             const ideaId = event.target.dataset.id;
             try {
-                // Das Löschen wird nur simuliert, da deleteDoc in dieser Umgebung oft fehlschlägt.
                 showModalError(`Die Idee mit ID ${ideaId} kann in dieser Sandbox-Umgebung nicht gelöscht werden. Die Liste aktualisiert sich aber automatisch.`);
             } catch (error) {
                 console.error("Fehler beim Löschen der Idee:", error);
@@ -700,7 +675,6 @@
             }
         }
 
-        // Start der Anwendung beim Laden der Seite
         window.onload = initFirebase;
 
     </script>
