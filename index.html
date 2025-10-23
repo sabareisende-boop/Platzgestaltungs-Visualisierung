@@ -101,14 +101,14 @@
                 <p id="fileStatus" class="mt-2 text-sm text-gray-600">Wählen Sie oben eine Datei aus, um sie als Basisbild zu setzen.</p>
             </div>
 
-            <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (EXTREM INSTABIL: Nicht empfohlen auf GitHub)</h3>
+            <h3 class="text-lg font-semibold mb-2 mt-4">B: Link manuell einfügen (DEAKTIVIERT auf GitHub Pages)</h3>
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Bild-Link (URL mit .jpg/.png) Ihres Platzes ein"
-                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                <input id="imageUrlInput" type="url" placeholder="Funktioniert nicht auf GitHub Pages. Bitte Option A verwenden."
+                       class="flex-grow p-3 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                        value=""
                        disabled
                 >
-                <button id="setBaseImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
+                <button id="setBaseImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md disabled:opacity-50 cursor-not-allowed" disabled>
                     Link als Basis setzen
                 </button>
             </div>
@@ -353,8 +353,8 @@
                 }
                 throw new Error("Ungültiges Base64-Datenformat.");
             }
-
-            // PRÜFUNG 2: Wenn es kein Base64 ist, versuchen Sie den externen Abruf (Option B)
+            
+            // PRÜFUNG 2: Wenn es kein Base64 ist (d.h. Option B wurde verwendet), versuchen Sie den externen Abruf
             let response;
             let mimeType;
 
@@ -426,15 +426,21 @@
             statusIndicatorEl.classList.add(isReady ? 'bg-green-100' : 'bg-red-100', isReady ? 'text-green-800' : 'text-red-800');
 
             // Kernfunktionen (Generierung) aktivieren/deaktivieren
-            imageUrlInputEl.disabled = !isReady;
-            setBaseImageBtnEl.disabled = !isReady;
+            // Option B deaktiviert lassen, wenn Firebase fehlt
+            imageUrlInputEl.disabled = !isReady || !isFullFirebaseActive;
+            setBaseImageBtnEl.disabled = !isReady || !isFullFirebaseActive;
+
             // Der Prompt-Input wird NUR durch das Laden eines Bildes aktiviert (fileToDataURL oder setBaseImageBtn)
-            // promptInputEl.disabled = !isReady; 
             
             // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
-            fileInputEl.disabled = !isReady; 
+            fileInputEl.disabled = !isReady; // Option A sollte immer funktionieren, wenn App Ready ist.
 
             if (!isFullFirebaseActive) {
+                // Wenn Firebase fehlt, wird die UI von Option B ausgegraut
+                imageUrlInputEl.value = "Link deaktiviert. Bitte Option A nutzen.";
+                imageUrlInputEl.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                setBaseImageBtnEl.classList.add('cursor-not-allowed');
+
                 saveBtnEl.disabled = true; 
             }
             
@@ -454,15 +460,18 @@
 
         setBaseImageBtnEl.addEventListener('click', () => {
             const newUrl = imageUrlInputEl.value;
-            if (newUrl) {
+            // Da Option B auf GitHub Pages hart blockiert ist, sollte dieser Code nur im Gemini Canvas laufen
+            if (isFullFirebase && newUrl) {
                 baseImageUrl = newUrl;
                 // WICHTIG: Wenn der Benutzer Option B wählt, muss das Base64-Bild von Option A verworfen werden.
                 fileInputEl.value = ''; // Leere das File-Input-Feld
-                fileStatusEl.textContent = "Link gesetzt. Bitte beachten Sie die Instabilität von Option B.";
+                fileStatusEl.textContent = "Link gesetzt (Achtung: Instabil).";
                 promptInputEl.disabled = false; // Prompt freischalten
                 resetView();
                 displayImageEl.src = baseImageUrl; 
                 showModalError(`Basisbild auf neuen Link gesetzt. Nun können Sie eine Idee generieren. **ACHTUNG:** Externe Links verursachen häufig CORS-Probleme (403-Fehler).`);
+            } else if (!isFullFirebase) {
+                 showModalError("Option B ist auf dieser gehosteten Version deaktiviert. Bitte verwenden Sie Option A (Bild hochladen).");
             } else {
                 showModalError("Bitte geben Sie eine gültige URL ein.");
             }
@@ -491,10 +500,16 @@
         async function generateIdea() {
             const prompt = promptInputEl.value.trim();
             if (!baseImageUrl || !prompt) {
-                // NEU: DIESER FEHLER SOLLTE DURCH DAS DISABLED-FELD VERHINDERT WERDEN
                 showModalError("Bitte laden Sie zuerst ein Basisbild hoch (Option A) UND geben Sie eine Idee (Prompt) ein.");
                 return;
             }
+
+            // NEUE ZUSÄTZLICHE PRÜFUNG: Wenn wir auf GitHub sind und BaseImageUrl KEINE DataURL ist, ABBRECHEN.
+            if (!isFullFirebase && !baseImageUrl.startsWith('data:')) {
+                 showModalError(`Generierungsfehler: API HTTP Error: 403. ${baseImageUrl} ist eine externe URL und wird blockiert. **VERWENDEN SIE NUR OPTION A (BILD HOCHLADEN)**.`);
+                 return;
+            }
+
 
             resetView(); 
             loadingOverlayEl.classList.remove('hidden');
@@ -570,6 +585,7 @@
                     
                     if (isFullFirebase) saveBtnEl.disabled = false; // Speichern nur wenn Firebase aktiv ist
                     fullscreenBtnEl.disabled = false;
+                    showModalSuccess("Generierung erfolgreich abgeschlossen! Das Ergebnis ist im Anzeigefeld.");
                 } else {
                     throw new Error("KI-Antwort enthält keine gültigen Bilddaten.");
                 }
@@ -600,7 +616,7 @@
                  console.warn("Firebase Config fehlt. Speicherung und Upload sind deaktiviert.");
                  isFullFirebase = false;
                  // Nur Generierungsfunktionen aktivieren, da Firebase fehlt.
-                 setReadyState(true, "Basis-Generierung (Upload/Link) bereit. Speicherung/Galerie deaktiviert.", false);
+                 setReadyState(true, "Basis-Generierung (Upload) bereit. Speicherung/Galerie deaktiviert.", false);
                  return;
             }
             
@@ -718,7 +734,7 @@
                     timestamp: serverTimestamp()
                 });
 
-                showModalError(`Idee (Prompt und Basisbild-Referenz) erfolgreich in der Galerie gespeichert! WICHTIGER HINWEIS: Das GENERIERTE BILD konnte aufgrund der 1MB-Datenbankbeschränkung NICHT gespeichert werden. Bitte speichern Sie das Ergebnisbild manuell über Rechtsklick!`);
+                showModalSuccess(`Idee (Prompt und Basisbild-Referenz) erfolgreich in der Galerie gespeichert! WICHTIGER HINWEIS: Das GENERIERTE BILD konnte aufgrund der 1MB-Datenbankbeschränkung NICHT gespeichert werden. Bitte speichern Sie das Ergebnisbild manuell über Rechtsklick!`);
                 
                 resetView(); 
                 
