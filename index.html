@@ -339,9 +339,11 @@
 
         /**
          * Hilfsfunktion: Kann Base64-Daten (Option A) oder externen Link (Option B) verarbeiten.
+         * HINWEIS: Option B (externer Link) ist auf GitHub Pages hart blockiert und führt zu Fehlern.
+         * Diese Funktion wurde vereinfacht, um nur Base64 zu verarbeiten.
          */
         async function imageToBase64(url) {
-            // PRÜFUNG 1: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
+            // PRÜFUNG: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
             if (url.startsWith('data:')) {
                 const parts = url.split(',');
                 const mimeTypeMatch = parts[0].match(/:(.*?);/);
@@ -351,61 +353,11 @@
                         mimeType: mimeTypeMatch[1]
                     };
                 }
-                throw new Error("Ungültiges Base64-Datenformat.");
+                throw new Error("Ungültiges Base64-Datenformat (A).");
             }
             
-            // PRÜFUNG 2: Wenn es kein Base64 ist (d.h. Option B wurde verwendet), versuchen Sie den externen Abruf
-            let response;
-            let mimeType;
-
-            const attempts = [
-                { url: url, name: 'Direkter Versuch' },
-                { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, name: 'Proxy 1' },
-                { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, name: 'Proxy 2' }
-            ];
-
-            if (!url.match(/\.(jpg|jpeg|png|gif|webp|apng|avif|tiff|bmp|svg)$/i)) {
-                throw new Error("Bitte verwenden Sie einen DIREKTEN Bild-Link (.jpg, .png etc.)");
-            }
-
-            for (const attempt of attempts) {
-                try {
-                    console.log(`Versuche, Bild über ${attempt.name} abzurufen: ${attempt.url.substring(0, 80)}...`);
-                    response = await fetch(attempt.url);
-                    
-                    if (!response.ok || response.status === 403) {
-                        throw new Error(`HTTP-Status: ${response.status}`);
-                    }
-                    
-                    const blob = await response.clone().blob();
-                    mimeType = blob.type;
-
-                    if (!mimeType || mimeType.startsWith('text/') || mimeType.startsWith('application/')) {
-                         const contentType = response.headers.get('content-type');
-                         if (contentType && contentType.startsWith('image/')) {
-                            mimeType = contentType;
-                         } else {
-                            throw new Error(`Ungültiger MIME-Typ (${mimeType || contentType}).`);
-                         }
-                    }
-                    
-                    const blobFinal = await response.blob(); 
-                    return new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve({
-                            base64Data: reader.result.split(',')[1],
-                            mimeType: mimeType
-                        }); 
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blobFinal);
-                    });
-
-                } catch (error) {
-                    console.warn(`Abrufversuch über ${attempt.name} fehlgeschlagen. Fehler: ${error.message}`);
-                    continue; 
-                }
-            }
-            throw new Error("Konnte Basisbild nicht laden oder konvertieren. Bitte Option A (Upload) verwenden.");
+            // Wenn es KEINE Base64-URL ist, brechen wir SOFORT mit einer lokalen Fehlermeldung ab.
+            throw new Error("Basisbild ist keine Base64-Daten-URL. Bitte verwenden Sie Option A (Bild hochladen) oder aktualisieren Sie die Seite.");
         }
 
 
@@ -503,13 +455,9 @@
                 showModalError("Bitte laden Sie zuerst ein Basisbild hoch (Option A) UND geben Sie eine Idee (Prompt) ein.");
                 return;
             }
-
+            
             // NEUE ZUSÄTZLICHE PRÜFUNG: Wenn wir auf GitHub sind und BaseImageUrl KEINE DataURL ist, ABBRECHEN.
-            if (!isFullFirebase && !baseImageUrl.startsWith('data:')) {
-                 showModalError(`Generierungsfehler: API HTTP Error: 403. ${baseImageUrl} ist eine externe URL und wird blockiert. **VERWENDEN SIE NUR OPTION A (BILD HOCHLADEN)**.`);
-                 return;
-            }
-
+            // Aufgrund der Vereinfachung der imageToBase64 Funktion, sollte dieser Check jetzt immer erfolgreich sein oder eine lokale Fehlermeldung auslösen, die nicht 403 ist.
 
             resetView(); 
             loadingOverlayEl.classList.remove('hidden');
@@ -522,7 +470,7 @@
             let currentRetry = 0;
 
             try {
-                // Base64-Daten abrufen (entweder aus der DataURL oder vom externen Link)
+                // Base64-Daten abrufen (kann jetzt nur Base64-DataURLs verarbeiten)
                 const { base64Data, mimeType } = await imageToBase64(baseImageUrl); 
                 const fullPrompt = `Platziere das folgende Objekt in der Mitte des bereitgestellten Platz-Fotos. Füge es realistisch ein und achte auf Schatten und Beleuchtung: ${prompt}`;
                 
@@ -592,8 +540,8 @@
 
             } catch (error) {
                 console.error("Generierungsfehler:", error);
-                // Wichtiger Hinweis: Wenn der 403-Fehler hier auftritt, liegt es am Link (Feld B)
-                showModalError(`Generierungsfehler: ${error.message}. **VERWENDEN SIE OPTION A (BILD HOCHLADEN)** für eine stabile Funktion auf GitHub Pages.`);
+                // Wenn der Fehler hier auftritt, ist es ein API-Fehler (NICHT CORS/IMGUR)
+                showModalError(`Generierungsfehler: ${error.message}. Bitte versuchen Sie es in Kürze erneut.`);
             } finally {
                 loadingOverlayEl.classList.add('hidden');
                 generateBtnEl.disabled = false;
