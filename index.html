@@ -105,7 +105,7 @@
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                 <input id="imageUrlInput" type="url" placeholder="Geben Sie den DIREKTEN Bild-Link (URL mit .jpg/.png) Ihres Platzes ein"
                        class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                       value="https://i.imgur.com/PGERfzo.jpeg"
+                       value=""
                        disabled
                 >
                 <button id="setBaseImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
@@ -209,7 +209,7 @@
         let isFullFirebase = false; // Flag, ob Firebase Storage/Firestore aktiv ist
 
         // Zustand
-        let baseImageUrl = document.getElementById('imageUrlInput').value;
+        let baseImageUrl = null; // Startet immer leer
         let generatedImageDataUrl = null;
         const BASE_COLLECTION_PATH = `/artifacts/${appId}/public/data/ideas`;
 
@@ -295,7 +295,8 @@
             const reader = new FileReader();
             reader.onload = () => {
                 baseImageUrl = reader.result; // Data URL (data:image/jpeg;base64,...)
-                imageUrlInputEl.value = "Datei erfolgreich geladen (Base64-Daten)";
+                // Wenn erfolgreich geladen, leeren wir Feld B, um Verwirrung zu vermeiden.
+                imageUrlInputEl.value = ""; 
                 resetView();
                 displayImageEl.src = baseImageUrl;
                 fileStatusEl.textContent = `Basisbild gesetzt: ${file.name}.`;
@@ -425,6 +426,9 @@
             const newUrl = imageUrlInputEl.value;
             if (newUrl) {
                 baseImageUrl = newUrl;
+                // WICHTIG: Wenn der Benutzer Option B wählt, muss das Base64-Bild von Option A verworfen werden.
+                fileInputEl.value = ''; // Leere das File-Input-Feld
+                fileStatusEl.textContent = "Link gesetzt. Bitte beachten Sie die Instabilität von Option B.";
                 resetView();
                 displayImageEl.src = baseImageUrl; 
                 showModalError(`Basisbild auf neuen Link gesetzt. Nun können Sie eine Idee generieren. **ACHTUNG:** Externe Links verursachen häufig CORS-Probleme (403-Fehler).`);
@@ -551,6 +555,11 @@
 
         async function initFirebase() {
             setReadyState(false, "App wird initialisiert...", false);
+            
+            // NEU: Setze baseImageUrl auf null beim Start. Das löscht den alten Imgur-Link.
+            imageUrlInputEl.value = ""; 
+            baseImageUrl = null;
+
 
             if (Object.keys(firebaseConfig).length === 0) {
                  setLogLevel('silent');
