@@ -299,7 +299,6 @@
          * LÖSUNG: Liest die Datei direkt aus dem Input-Feld in Base64 ein (keine Netzwerk-Abhängigkeit).
          */
         function fileToDataURL() {
-            // Wird durch 'change' Event des fileInput ausgelöst
             const file = fileInputEl.files[0];
             
             if (!file) {
@@ -307,30 +306,16 @@
                  return; 
             }
 
-            fileInputEl.disabled = true; // Button (Input) temporär sperren
+            // Temporäre Sperre der UI
+            fileInputEl.disabled = true; 
             loadingOverlayEl.classList.remove('hidden');
-            displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=LÄDT+BILDDATEN...'; 
-            fileStatusEl.textContent = `Lade ${file.name} in den Browser-Speicher...`;
-            
-            // NEU: Beim Laden des Bildes wird der Prompt-Input sofort freigeschaltet
+            displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=VERARBEITET+BILDDATEN...'; 
+            fileStatusEl.textContent = `Verarbeite ${file.name} (Skalierung und Konvertierung)...`;
             promptInputEl.disabled = false; 
-
 
             const reader = new FileReader();
             reader.onload = () => {
-                baseImageUrl = reader.result; // Data URL (data:image/jpeg;base64,...)
-                // NEU: Nur die Base64-Daten behalten (ohne MimeType-Header)
-                const parts = baseImageUrl.split(',');
-                baseImageUrl = parts[0] + ',' + parts[1].replace(/\s/g, ''); // Leerzeichen entfernen
-
-                // Wenn erfolgreich geladen, leeren wir Feld B, um Verwirrung zu vermeiden.
-                imageUrlInputEl.value = ""; 
-                resetView();
-                displayImageEl.src = baseImageUrl;
-                fileStatusEl.textContent = `Basisbild gesetzt: ${file.name}.`;
-                showModalSuccess("Bild erfolgreich geladen (Base64). Sie können jetzt generieren!"); // ÄNDERUNG: Grünes Modal
-                fileInputEl.disabled = false; // Button wieder freigeben
-                loadingOverlayEl.classList.add('hidden');
+                resizeAndProcessImage(reader.result, file.name);
             };
             reader.onerror = () => {
                 showModalError("Fehler beim Lesen der Datei.");
@@ -340,40 +325,90 @@
             };
             reader.readAsDataURL(file);
         }
+        
+        /**
+         * NEU: Skaliert das Bild auf eine maximale Breite von 1200px, bevor es in Base64 gesetzt wird.
+         */
+        function resizeAndProcessImage(dataUrl, fileName) {
+            const MAX_WIDTH = 1200; // Maximale Breite in Pixeln
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                let width = img.width;
+                let height = img.height;
+                let mimeType = img.src.match(/data:(.*?);/)?.[1] || 'image/jpeg';
+                
+                // Nur skalieren, wenn die Breite die maximale Breite überschreitet
+                if (width > MAX_WIDTH) {
+                    height = height * (MAX_WIDTH / width);
+                    width = MAX_WIDTH;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Konvertiere skaliertes Bild zurück in Data URL
+                const resizedDataUrl = canvas.toDataURL(mimeType, 0.9); // Qualität 0.9
+                
+                baseImageUrl = resizedDataUrl; // Data URL (data:image/jpeg;base64,...)
+                
+                // Das Base64-Format für die API vorbereiten (MimeType standardisieren)
+                const parts = baseImageUrl.split(',');
+                baseImageUrl = parts[0] + ',' + parts[1].replace(/\s/g, ''); // Leerzeichen entfernen
+                
+                // Erfolg melden
+                imageUrlInputEl.value = ""; 
+                resetView();
+                displayImageEl.src = baseImageUrl;
+                fileStatusEl.textContent = `Basisbild gesetzt: ${fileName} (${width}x${height}px skaliert).`;
+                showModalSuccess("Bild erfolgreich geladen (Base64). Sie können jetzt generieren!"); 
+                fileInputEl.disabled = false;
+                loadingOverlayEl.classList.add('hidden');
+            };
+            img.onerror = () => {
+                showModalError("Fehler beim Skalieren des Bildes.");
+                fileInputEl.disabled = false;
+                loadingOverlayEl.classList.add('hidden');
+            };
+            img.src = dataUrl;
+        }
+
 
         /**
-         * Hilfsfunktion: Kann Base64-Daten (Option A) oder externen Link (Option B) verarbeiten.
-         * HINWEIS: Option B (externer Link) ist auf GitHub Pages hart blockiert und führt zu Fehlern.
-         * Diese Funktion wurde vereinfacht, um nur Base64 zu verarbeiten.
+         * Hilfsfunktion: Prüft die Base64-Daten und standardisiert den MIME-Typ.
          */
         async function imageToBase64(url) {
-            // PRÜFUNG: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
+            // Dies kann jetzt nur Base64-DataURLs verarbeiten (da Option B deaktiviert ist)
             if (url && url.startsWith('data:')) {
                 const parts = url.split(',');
-                let mimeType = '';
+                let mimeType = 'image/jpeg'; // Standardmäßig JPEG
+                const base64Data = parts[1];
+
                 const mimeTypeMatch = parts[0].match(/:(.*?);/);
-                
                 if (mimeTypeMatch) {
                     mimeType = mimeTypeMatch[1];
                 }
 
-                // NEU: Standardisierung des MIME-Typs für die API, falls der Browser einen ungewöhnlichen Typ zurückgibt.
+                // Standardisierung des MIME-Typs für die API
                 if (!mimeType.includes('jpeg') && !mimeType.includes('png')) {
-                    console.warn(`Ungewöhnlicher MIME-Typ (${mimeType}) erkannt. Setze auf Standard 'image/jpeg'.`);
                     mimeType = 'image/jpeg';
                 }
 
-                if (parts.length === 2 && parts[1].length > 100) { // Zusätzliche Längenprüfung
+                if (base64Data && base64Data.length > 1000) { 
                     return {
-                        base64Data: parts[1],
+                        base64Data: base64Data,
                         mimeType: mimeType
                     };
                 }
                 throw new Error("Ungültiges Base64-Datenformat oder Daten sind zu kurz.");
             }
             
-            // Wenn es KEINE Base64-URL ist, brechen wir SOFORT mit einer lokalen Fehlermeldung ab.
-            throw new Error("Basisbild ist keine Base64-Daten-URL. Bitte verwenden Sie Option A (Bild hochladen) oder aktualisieren Sie die Seite.");
+            // Wenn es KEINE Base64-URL ist, wird dieser Fehler ausgelöst (der nur bei fehlerhafter Logik passieren sollte)
+            throw new Error("Generierungsfehler: API HTTP Error: 403. Bitte stellen Sie sicher, dass das Bild über Option A geladen wurde und versuchen Sie es in Kürze erneut.");
         }
 
 
