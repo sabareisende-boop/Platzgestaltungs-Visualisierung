@@ -350,12 +350,23 @@
             // PRÜFUNG: Ist die URL bereits eine Base64 Data URL (vom Upload A)?
             if (url && url.startsWith('data:')) {
                 const parts = url.split(',');
+                let mimeType = '';
                 const mimeTypeMatch = parts[0].match(/:(.*?);/);
                 
-                if (mimeTypeMatch && parts.length === 2 && parts[1].length > 100) { // Zusätzliche Längenprüfung
+                if (mimeTypeMatch) {
+                    mimeType = mimeTypeMatch[1];
+                }
+
+                // NEU: Standardisierung des MIME-Typs für die API, falls der Browser einen ungewöhnlichen Typ zurückgibt.
+                if (!mimeType.includes('jpeg') && !mimeType.includes('png')) {
+                    console.warn(`Ungewöhnlicher MIME-Typ (${mimeType}) erkannt. Setze auf Standard 'image/jpeg'.`);
+                    mimeType = 'image/jpeg';
+                }
+
+                if (parts.length === 2 && parts[1].length > 100) { // Zusätzliche Längenprüfung
                     return {
                         base64Data: parts[1],
-                        mimeType: mimeTypeMatch[1]
+                        mimeType: mimeType
                     };
                 }
                 throw new Error("Ungültiges Base64-Datenformat oder Daten sind zu kurz.");
