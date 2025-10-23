@@ -74,10 +74,14 @@
 
             <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
                 <h3 class="text-lg font-semibold mb-2 text-orange-700">A: Bild hochladen (STABILE LÖSUNG: Funktioniert garantiert auf GitHub Pages)</h3>
-                <input type="file" id="fileInput" accept="image/jpeg, image/png" class="mb-2 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none" disabled>
-                <button id="uploadFileBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
-                    Bild hochladen & als Basis setzen
+                <!-- Das Input-Feld ist nun standardmäßig ausgeblendet, da der Button die Funktion übernimmt -->
+                <input type="file" id="fileInput" accept="image/jpeg, image/png" class="hidden" disabled>
+                
+                <!-- Der Button öffnet nun den Dialog und setzt das Bild, wenn eine Datei ausgewählt wurde -->
+                <button id="selectFileBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md disabled:opacity-50" disabled>
+                    Bilddatei auswählen & als Basis setzen
                 </button>
+                <p id="fileStatus" class="mt-2 text-sm text-gray-600">Keine Datei ausgewählt.</p>
             </div>
 
             <h3 class="text-lg font-semibold mb-2 mt-4">B: Oder Link manuell einfügen (EXTREM INSTABIL: Nicht empfohlen auf GitHub)</h3>
@@ -158,7 +162,7 @@
             <!-- Bild oder Basisbild mit Prompt wird hier angezeigt -->
              <div id="fullscreenTextOverlay" class="absolute p-4 text-center bg-black bg-opacity-70 text-white rounded-xl max-w-4xl transition-opacity duration-500 opacity-0">
                 <p class="text-xl font-medium mb-1">Präsentierte Idee (Prompt):</p>
-                <p id="fullscreenPromptText" class="text-3xl font-extrabold"></p>
+                <p id="fullscreenPromptText" class="3xl font-extrabold"></p>
                 <p id="fullscreenImageNote" class="mt-2 text-sm text-gray-300"></p>
             </div>
         </div>
@@ -197,7 +201,9 @@
         const imageUrlInputEl = document.getElementById('imageUrlInput');
         const setBaseImageBtnEl = document.getElementById('setBaseImageBtn');
         const fileInputEl = document.getElementById('fileInput'); 
-        const uploadFileBtnEl = document.getElementById('uploadFileBtn'); 
+        // WICHTIG: selectFileBtnEl ist der Button, der geklickt wird
+        const selectFileBtnEl = document.getElementById('selectFileBtn'); 
+        const fileStatusEl = document.getElementById('fileStatus'); // NEU: Statusanzeige für die Datei
         const promptInputEl = document.getElementById('promptInput');
         const generateBtnEl = document.getElementById('generateBtn');
         const saveBtnEl = document.getElementById('saveBtn');
@@ -260,14 +266,17 @@
          */
         function fileToDataURL() {
             const file = fileInputEl.files[0];
+            
+            // Wenn keine Datei ausgewählt ist, öffnen wir den Dialog, um die Auswahl zu ermöglichen
             if (!file) {
-                showModalError("Bitte wählen Sie eine Bilddatei aus.");
-                return;
+                 fileInputEl.click();
+                 return; 
             }
 
-            uploadFileBtnEl.disabled = true;
+            selectFileBtnEl.disabled = true;
             loadingOverlayEl.classList.remove('hidden');
             displayImageEl.src = 'https://placehold.co/1200x800/805ad5/ffffff?text=LÄDT+BILDDATEN...'; 
+            fileStatusEl.textContent = `Lade ${file.name} in den Browser-Speicher...`;
 
             const reader = new FileReader();
             reader.onload = () => {
@@ -275,13 +284,15 @@
                 imageUrlInputEl.value = "Datei erfolgreich geladen (Base64-Daten)";
                 resetView();
                 displayImageEl.src = baseImageUrl;
+                fileStatusEl.textContent = `Basisbild gesetzt: ${file.name}.`;
                 showModalError("Bild erfolgreich geladen (Base64). Sie können jetzt generieren!");
-                uploadFileBtnEl.disabled = false;
+                selectFileBtnEl.disabled = false;
                 loadingOverlayEl.classList.add('hidden');
             };
             reader.onerror = () => {
                 showModalError("Fehler beim Lesen der Datei.");
-                uploadFileBtnEl.disabled = false;
+                fileStatusEl.textContent = "Fehler beim Laden der Datei.";
+                selectFileBtnEl.disabled = false;
                 loadingOverlayEl.classList.add('hidden');
             };
             reader.readAsDataURL(file);
@@ -381,14 +392,10 @@
             generateBtnEl.disabled = !isReady;
             
             // Firebase-abhängige Funktionen (Upload und Speichern in Galerie)
-            if (isFullFirebaseActive) {
-                fileInputEl.disabled = !isReady;
-                uploadFileBtn.disabled = !isReady;
-            } else {
-                // Option A ist die stabile Hauptfunktion und muss IMMER aktiviert sein, wenn App Ready ist
-                fileInputEl.disabled = !isReady; 
-                uploadFileBtnEl.disabled = !isReady;
-                
+            // Wenn App Ready ist, wird der Select Button aktiviert.
+            selectFileBtnEl.disabled = !isReady; 
+
+            if (!isFullFirebaseActive) {
                 // Speichern ist ohne Firestore auf GitHub Pages sinnlos
                 saveBtnEl.disabled = true; 
             }
@@ -397,6 +404,18 @@
         }
 
         // --- Event Listener ---
+
+        // NEU: Selektions-Button (Orange)
+        selectFileBtnEl.addEventListener('click', fileToDataURL);
+
+        // NEU: Listener für Datei-Änderung (wenn der Benutzer die Datei über das Browsermenü ausgewählt hat)
+        fileInputEl.addEventListener('change', () => {
+             // Wenn eine Datei ausgewählt wurde, aber der Button noch nicht geklickt wurde, setzen wir das Bild sofort.
+            if (fileInputEl.files.length > 0) {
+                fileToDataURL();
+            }
+        });
+
 
         setBaseImageBtnEl.addEventListener('click', () => {
             const newUrl = imageUrlInputEl.value;
@@ -410,8 +429,6 @@
             }
         });
         
-        // NEU: Listener für den Upload-Button nutzt jetzt die lokale Konvertierung
-        uploadFileBtnEl.addEventListener('click', fileToDataURL);
 
         generateBtnEl.addEventListener('click', generateIdea);
         saveBtnEl.addEventListener('click', saveToGallery);
